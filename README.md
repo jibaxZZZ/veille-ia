@@ -20,7 +20,7 @@ Dépôt d'une veille IA quotidienne qui teste au lieu de seulement lire, exécut
    - prompt : contenu de `PROMPT.md` ;
    - dépôt : celui-ci ; environnement : celui de l'étape 3 ;
    - déclencheur : planifié, quotidien, à une heure qui ne tombe pas pile (par exemple 05:07), pour éviter les départs en retard ;
-   - **connecteurs : retire-les tous** (Gmail, Notion et les autres), la veille n'en a pas besoin ;
+   - **connecteurs : AgentMail seul** (pour le mail de synthèse de l'étape 8, limité à `send_message`), retire tous les autres (Gmail, Notion…) ;
    - modèle : commence par Sonnet 5.5 puis compare avec un modèle plus fort si la qualité des tests te déçoit.
 5. **Autorise les pushes sur `main`.** Dans les paramètres du dépôt de la tâche, active *Allow unrestricted branch pushes*. Sans cela, Claude pousse sur une branche `claude/…` : `tested.md` n'est alors jamais vu par le run suivant et les tests se répètent.
 6. **Premier essai : « Run now ».** Ouvre la session et lis la transcription : actions bloquées, installations qui échouent, temps passé, consommation sur claude.ai/settings/usage. Ajuste `topics.md`, `rubric.md` ou le prompt avant de laisser tourner la nuit.
@@ -34,5 +34,5 @@ Dépôt d'une veille IA quotidienne qui teste au lieu de seulement lire, exécut
 ## Points de vigilance
 
 - Les runs cloud démarrent en *auto mode* : après plusieurs actions bloquées, un run peut attendre une validation humaine. Si l'historique montre un run bloqué, ouvre-le et regarde ce qui a été refusé.
-- Réseau Full et contenu web non fiable : la protection repose sur l'absence de secrets et de connecteurs et sur les règles de `CLAUDE.md`. Garde cette séparation.
+- Réseau Full et contenu web non fiable : la protection repose sur l'absence de secrets, sur un seul connecteur (AgentMail, envoi uniquement, destinataire fixé dans le prompt) et sur les règles de `CLAUDE.md`. Garde cette séparation.
 - La tâche consomme ton abonnement comme une session interactive ; une veille qui installe et lance des outils consomme nettement plus qu'une simple lecture.
