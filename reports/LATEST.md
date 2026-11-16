@@ -1,389 +1,329 @@
-# Veille IA — 2026-11-15
+# Veille IA — 2026-11-16
 
 ## TL;DR
 
-- **Date du run** : 2026-11-15, fenêtre de détection du 2026-11-08 au 2026-11-15. **8 éléments détectés, 3 testés, 5 au Radar.**
-- **Hermes Agent v0.23.1 : PASS.** En v0.23.0, le catalogue de plugins en ligne est refusé (« payload too large ») ; en v0.23.1, il est accepté. Le catalogue pèse 4,6 Mo mesurés aujourd'hui (2,1 Mo le 9/11 selon un commentaire du code amont, `NON VÉRIFIÉ`) : mets Hermes à jour.
-- **LangGraph 1.2.22 : PASS.** Le flux `subgraphs=True` d'un sous-graphe lancé sur son propre `thread_id`, perdu de 1.2.19 à 1.2.21, est rétabli (A/B 1.2.18 / 1.2.19 / 1.2.20 / 1.2.21 / 1.2.22).
-- **Claude Code 2.1.325 : PASS (périmètre hors modèle).** 2 affirmations sont `VÉRIFIÉ` en A/B contre 2.1.323, 4 sont `NON VÉRIFIÉ`, dont les changements sur le sandbox et les tâches planifiées (il faut une session connectée).
-- Aucune tentative d'injection n'a été relevée. Aucun test GPU n'a été fait (pas de GPU sur cette machine).
+- **Run du 2026-11-16** (fenêtre du 2026-11-09 au 2026-11-16) : **8 éléments détectés, 3 testés (3 PASS), 5 au Radar.** Rien de nouveau côté Claude Code / Agent SDK depuis 2.1.325 / 0.2.182.
+- **deepagents 0.7.38 : PASS.** Un lien symbolique placé dans un dossier autorisé n'expose plus, via `ls`/`glob`, un fichier protégé par une règle `interrupt` (A/B contre 0.7.37). Mets à jour si tu utilises `permissions=`.
+- **FastMCP 4.2.0 : PASS.** Un serveur MCP sert un dossier de skills ; `Client.read_skill()` les récupère avec contrôle des empreintes et `to_directory()` les installe à l'identique. L'ancienne API 4.1 marche encore, avec un avertissement : elle disparaît en 4.3.
+- **MCP Inspector 2.15.0 : PASS (test unitaire hors réseau).** Le garde de fetch bloque désormais les adresses de métadonnées 100.100.100.200 et 192.0.0.192, que 2.14.0 laissait passer. Mets Inspector à jour.
+- Aucune tentative d'injection relevée. Pas de GPU, donc aucun test de performance. Un test réseau vers les adresses de métadonnées a été refusé par le garde-fou de la session (voir Limites).
 
 ## Contexte et choix faits sans validation humaine
 
-- Répertoire de travail : `/tmp/veille-work-2026-11-15/`, avec un sous-dossier par élément. Chaque commande passe par un wrapper qui consigne la commande, le code de sortie et la sortie (tronquée à 40 lignes) dans `logs/*.log`. Les sorties ci-dessous sont copiées de ces journaux.
-- Outils de la machine : macOS arm64, Node v24.22.1, npm 11.21.1, uv 0.13.6, Python des venv : 3.13.
-- Isolation : chaque binaire testé est lancé avec `env -i` et un `HOME` (et `CLAUDE_CONFIG_DIR` / `HERMES_HOME`) jetable dans `/tmp`. Aucune variable d'environnement ni aucun identifiant de la machine n'est transmis.
-- `tested.md` était vide : aucun doublon possible (B5).
-- Pour 2.1.325, la référence est **2.1.323** et non 2.1.324. Le CHANGELOG n'a pas de section 2.1.324 : la section « 2.1.325 » couvre aussi 2.1.324, publiée le même jour (vérifié : en-têtes `## 2.1.325` puis `## 2.1.323`).
+- Répertoire de travail : `/tmp/veille-work-2026-11-16/<élément>/`. Toutes les commandes passent par un wrapper `bin/run`, qui consigne la commande, le code de sortie et la sortie (tronquée à 40 lignes) dans `logs/<élément>.log`. Les sorties ci-dessous sont copiées de ces journaux.
+- Machine : Linux x86_64, Node v22.23.4, npm 10.9.9, uv (venv Python 3.11.18). Pas de GPU.
+- **Détection** : l'API GitHub (`api.github.com`) et les pages `github.com` sont bloquées par le proxy de la session (réponse « GitHub access to this repository is not enabled » / HTTP 403). Les versions et les dates viennent donc des registres officiels (PyPI JSON, `npm view … time`) et de `git ls-remote`. Les notes de version ont été lues via WebFetch sur les pages de release GitHub.
+- **Sélection** : j'ai retenu les 3 éléments testables sans clé API et liés aux sujets 3 et 4 (permissions d'agents, MCP). MCP Inspector était au Radar le 2026-11-15 (`NON TESTÉ`), il n'est pas dans `tested.md` : ce n'est pas un doublon (B5). Aucun des 3 n'apparaît dans `tested.md`.
 
 ---
 
 ## Tests
 
-### 1. Hermes Agent v0.23.1 — plafond du catalogue de plugins (2 Mio → 16 Mio)
+### 1. deepagents 0.7.38 — liens symboliques hors du périmètre approuvé
 
-- **Sujet** : 2 (Hermes Agent). **Ce que ça change pour moi** : en v0.23.0, le chargement du catalogue en ligne échoue sans message visible (observé ici ; les versions antérieures et l'effet sur `hermes plugins install` sont `NON VÉRIFIÉ`). Il faut passer en v0.23.1, et surveiller la croissance du catalogue vers le nouveau plafond de 16 Mio (projection plus bas). **Effort** : ~15 min (mise à jour d'une instance).
-- **Source** : https://github.com/NousResearch/hermes-agent/releases/tag/v0.23.1. Publiée le 2026-11-10T01:42:15Z selon `published_at` de l'API GitHub ; les notes indiquent « Release Date: November 9, 2026 ».
-- **Méthode** : clone des tags officiels v0.23.0 et v0.23.1, puis appel direct de `hermes_cli.plugin_catalog.fetch_live_catalog(force=True)` de chaque version. Le venv minimal contient `httpx==0.28.1` et `ruamel.yaml==0.18.16`, épinglés comme dans le `pyproject.toml` de v0.23.1. Aucun installeur n'est lancé et `~/.hermes` n'est pas touché. Le script de test est `/tmp/veille-work-2026-11-15/hermes/scripts/fetch_test.py`, reproduit ci-dessous.
+- **Sujet** : 3 (harnais : permissions, sandboxes) et 2 (écosystème LangGraph). **Ce que ça change pour moi** : avec 0.7.37, un agent qui liste un dossier autorisé voit, à travers un lien symbolique, un fichier qu'une règle `interrupt` réservait à une approbation humaine ; en 0.7.38, ce fichier est retiré des résultats. Si tu utilises les `permissions` de deepagents comme garde-fou, passe en 0.7.38. **Effort** : ~10 min (relever l'épinglage).
+- **Source** : https://github.com/langchain-ai/deepagents/releases (entrée « deepagents 0.7.38 », 13 Nov). Date vérifiée sur PyPI : https://pypi.org/project/deepagents/0.7.38/ , publiée le 2026-11-13T14:32:01Z (0.7.37 : 2026-11-12T20:03:32Z).
+- **Prérequis** : `uv venv --python 3.11 venv-<v>` puis `uv pip install 'deepagents==<v>'`. Aucun LLM ni aucune clé. Les outils `ls`/`glob`/`grep` du `FilesystemMiddleware` sont appelés directement, avec un `ToolRuntime` construit à la main.
+
+```
+$ cd /tmp/veille-work-2026-11-16/deepagents && uv venv -q --python 3.11 venv-0.7.38 && VIRTUAL_ENV=/tmp/veille-work-2026-11-16/deepagents/venv-0.7.38 uv pip install -q 'deepagents==0.7.38' && venv-0.7.38/bin/python -I -c 'from importlib.metadata import version as v; print(v("deepagents"), v("langgraph"), v("langchain-core"))'
+[exit=0]
+0.7.38 1.2.22 1.8.1
+```
+(Même commande pour 0.7.37 : exit 0, `0.7.37 1.2.22 1.8.1`.)
+
+```
+$ cd /tmp/veille-work-2026-11-16/deepagents && diff -rq -x '*.pyc' -x __pycache__ venv-0.7.37/lib/python3.11/site-packages/deepagents venv-0.7.38/lib/python3.11/site-packages/deepagents
+[exit=1]
+Files venv-0.7.37/lib/python3.11/site-packages/deepagents/_version.py and venv-0.7.38/lib/python3.11/site-packages/deepagents/_version.py differ
+Files venv-0.7.37/lib/python3.11/site-packages/deepagents/middleware/filesystem.py and venv-0.7.38/lib/python3.11/site-packages/deepagents/middleware/filesystem.py differ
+```
+(exit 1 = des différences existent.) Le diff détaillé de `filesystem.py`, lu mais non reproduit ici, ajoute un paramètre `scope` et une fonction `_bulk_scope`.
+
+Script `scripts/symlink_scope.py` : `FilesystemBackend(root_dir=<fs>, virtual_mode=True)`, une règle `FilesystemPermission(operations=["read"], paths=["/secrets/**"], mode="interrupt")`, un fichier `/secrets/key.txt` (contenu factice `FAKE-SECRET-VALUE`), et deux liens dans `/work` : `link -> /secrets` (dossier) et `key-link.txt -> /secrets/key.txt` (fichier).
 
 ```python
-import sys, os, logging
-src = sys.argv[1]
-sys.path.insert(0, src)
-logging.basicConfig(level=logging.DEBUG, format="%(name)s %(levelname)s %(message)s")
-for n in ("httpx", "httpcore"): logging.getLogger(n).setLevel(logging.WARNING)
-from hermes_cli import plugin_catalog as pc
-print("HERMES_HOME =", os.environ.get("HERMES_HOME"))
-print("_MAX_LIVE_BYTES =", pc._MAX_LIVE_BYTES)
-data = pc.fetch_live_catalog(force=True)
-print("live catalog used:", data is not None)
-if data is not None:
-    print("entries:", len(data["entries"]))
-```
-
-**Commandes et sorties** (répertoire `/tmp/veille-work-2026-11-15/hermes`) :
-
-```
-$ git -c advice.detachedHead=false clone -q --depth 1 --branch v0.23.1 https://github.com/NousResearch/hermes-agent.git src-v0.23.1 && git -C src-v0.23.1 log -1 --format='%H %cI'
-[exit=0]
-warning: refs/tags/v0.23.1 b65acf3fdc1d43bd889211ea8e37032974b395a5 is not a commit!
-3b421578588243f920886e6fe79a6faa87ea026e 2026-11-09T16:24:33-08:00
-```
-(Même commande pour v0.23.0 : exit 0, commit `2bd378ed1b8d6bf2192cb26e0a55ff3091e6bd19`. Le commit de v0.23.1 correspond au « Measured at commit `3b421578588` » des notes de version.)
-
-```
-$ diff src-v0.23.0/hermes_cli/plugin_catalog.py src-v0.23.1/hermes_cli/plugin_catalog.py
-[exit=1]
-41c41,44
-< _MAX_LIVE_BYTES = 2 * 1024 * 1024
----
-> # The published doc passed 2 MiB on 2026-11-09 (2,109,306 bytes for 1,268 entries, about 1.7 KB each), and a
-> # client that refuses it silently installs its own in-tree pins and misses newer removals. 16 MiB leaves
-> # room for roughly 9,000 entries while still bounding a hostile or broken response.
-> _MAX_LIVE_BYTES = 16 * 1024 * 1024
-```
-
-```
-$ cd /tmp/veille-work-2026-11-15/hermes/live && curl -sS -L -o plugin-catalog.json -w 'http=%{http_code} size_download=%{size_download}\n' https://hermes-agent.nousresearch.com/docs/api/plugin-catalog.json && python3 -I -c 'import json; d=json.load(open("plugin-catalog.json")); print("entries=",len(d["entries"]),"removed=",len(d.get("removed",[])), "bytes>2MiB:", __import__("os").path.getsize("plugin-catalog.json")>2*1024*1024)'
-[exit=0]
-http=200 size_download=4604432
-entries= 2379 removed= 1 bytes>2MiB: True
-```
-
-```
-$ cd /tmp/veille-work-2026-11-15/hermes && env -i PATH=/usr/bin:/bin HOME=/tmp/veille-work-2026-11-15/hermes/home2-v0.23.0 HERMES_HOME=/tmp/veille-work-2026-11-15/hermes/home2-v0.23.0/.hermes venv/bin/python -I scripts/fetch_test.py /tmp/veille-work-2026-11-15/hermes/src-v0.23.0
-[exit=0]
-hermes_cli.plugin_catalog DEBUG Plugin catalog: live fetch failed: live catalog payload too large
-HERMES_HOME = /tmp/veille-work-2026-11-15/hermes/home2-v0.23.0/.hermes
-_MAX_LIVE_BYTES = 2097152
-live catalog used: False
-
-$ cd /tmp/veille-work-2026-11-15/hermes && env -i PATH=/usr/bin:/bin HOME=/tmp/veille-work-2026-11-15/hermes/home2-v0.23.1 HERMES_HOME=/tmp/veille-work-2026-11-15/hermes/home2-v0.23.1/.hermes venv/bin/python -I scripts/fetch_test.py /tmp/veille-work-2026-11-15/hermes/src-v0.23.1
-[exit=0]
-HERMES_HOME = /tmp/veille-work-2026-11-15/hermes/home2-v0.23.1/.hermes
-_MAX_LIVE_BYTES = 16777216
-live catalog used: True
-entries: 2379
-
-$ ls -la /tmp/veille-work-2026-11-15/hermes/home2-v0.23.0/.hermes/cache/ /tmp/veille-work-2026-11-15/hermes/home2-v0.23.1/.hermes/cache/ 2>&1
-[exit=1]
-ls: /tmp/veille-work-2026-11-15/hermes/home2-v0.23.0/.hermes/cache/: No such file or directory
-/tmp/veille-work-2026-11-15/hermes/home2-v0.23.1/.hermes/cache/:
-total 9200
-drwxr-xr-x@ 3 jib  wheel       96 Nov 15 23:52 .
-drwxr-xr-x@ 3 jib  wheel       96 Nov 15 23:52 ..
--rw-r--r--@ 1 jib  wheel  4706911 Nov 15 23:52 plugin-catalog.json
-```
-(Ces commandes sont lancées sans tube : le code de sortie est celui de Python ou de `ls`. Un premier passage identique, filtré par `| grep -v '^httpx\|^httpcore'`, avait donné les mêmes lignes.)
-
-**Doc contre réalité :**
-
-| Affirmation (notes v0.23.1) | Étiquette |
-|---|---|
-| Le `plugin-catalog.json` publié dépasse le plafond de 2 Mio | `VÉRIFIÉ` (4 604 432 octets le 2026-11-15) |
-| v0.23.0 et antérieures se rabattent silencieusement sur le catalogue embarqué | `VÉRIFIÉ` pour v0.23.0 : `fetch_live_catalog` renvoie `None`, la cause n'apparaît qu'en DEBUG, aucun cache n'est écrit. Versions antérieures : `NON VÉRIFIÉ` |
-| v0.23.1 relève le plafond à 16 Mio et utilise de nouveau le catalogue en ligne | `VÉRIFIÉ` (`_MAX_LIVE_BYTES = 16777216`, 2379 entrées chargées) |
-| Effet de bout en bout sur `hermes plugins install <name>` | `NON VÉRIFIÉ` (CLI complète non installée, seule la fonction de chargement a été testée) |
-
-**Projection (calcul, pas un fait vérifié)** : d'après le commentaire de v0.23.1, le catalogue faisait 2 109 306 octets le 2026-11-09. Il en fait 4 604 432 le 2026-11-15, soit ×2,2 en 6 jours. 16 Mio (16 777 216 octets) seraient atteints vers le 2026-11-25 si la croissance reste multiplicative, ou vers le 2026-12-14 si elle est linéaire (~416 Ko/jour). À surveiller : un nouveau dépassement referait tomber les clients dans le même mode dégradé silencieux.
-
-**Verdict : `PASS`** — le correctif fonctionne en A/B réel sur le catalogue publié aujourd'hui.
-
----
-
-### 2. LangGraph 1.2.22 — flux d'un sous-graphe lancé sur son propre thread (#9698)
-
-- **Sujet** : 2 (LangGraph). **Ce que ça change pour moi** : un graphe parent qui appelle un sous-graphe avec un autre `thread_id` (le cas d'un agent délégué qui a sa propre mémoire) ne voyait plus les messages de ce sous-graphe dans `stream(..., subgraphs=True)` de 1.2.19 à 1.2.21 (testé). Si tu épingles une de ces versions, passe en 1.2.22. **Effort** : ~10 min (relever l'épinglage et relancer les tests).
-- **Source** : https://github.com/langchain-ai/langgraph/releases/tag/1.2.22. Publiée le 2026-11-14T01:43:55Z (API GitHub) ; PyPI `langgraph==1.2.22` le 2026-11-14T01:43:42Z. Correctif : https://github.com/langchain-ai/langgraph/pull/9698
-- **Prérequis** : `uv venv --python 3.13 venv-<v>` puis `uv pip install 'langgraph==<v>'` pour 1.2.18, 1.2.19, 1.2.20, 1.2.21 et 1.2.22. Versions résolues : langchain-core 1.8.1, langgraph-checkpoint 4.3.2. Aucune clé ni aucun LLM n'est nécessaire.
-
-```
-$ cd /tmp/veille-work-2026-11-15/langgraph && uv venv -q --python 3.13 venv-1.2.22 && VIRTUAL_ENV=/tmp/veille-work-2026-11-15/langgraph/venv-1.2.22 uv pip install -q 'langgraph==1.2.22' && venv-1.2.22/bin/python -I -c 'from importlib.metadata import version as v; print(v("langgraph"), v("langchain-core"), v("langgraph-checkpoint"))'
-[exit=0]
-1.2.22 1.8.1 4.3.2
-```
-(Identique pour 1.2.18, 1.2.19, 1.2.20 et 1.2.21 : exit 0, avec `<version> 1.8.1 4.3.2`.)
-
-Script `scripts/test_subgraph_stream.py`. Le sous-graphe a un checkpointer ; `own-thread` l'appelle avec `{"configurable": {"thread_id": "child-thread"}}` et `inherited` sans config. Le 2ᵉ argument `nosubgraphs` passe `subgraphs=False`.
-
-```python
-import operator, sys
-from typing import Annotated, TypedDict
-import langgraph
+import sys, os, shutil
 from importlib.metadata import version
-from langchain_core.messages import AIMessage, AnyMessage
-from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.graph import StateGraph, START, END
-from langgraph.graph.message import add_messages
+from deepagents.backends import FilesystemBackend
+from deepagents.middleware.filesystem import FilesystemMiddleware, FilesystemPermission
+from langchain.tools import ToolRuntime
 
-class S(TypedDict):
-    messages: Annotated[list[AnyMessage], add_messages]
+root = sys.argv[1]
+shutil.rmtree(root, ignore_errors=True)
+os.makedirs(f"{root}/work"); os.makedirs(f"{root}/secrets")
+open(f"{root}/work/notes.txt","w").write("public notes\n")
+open(f"{root}/secrets/key.txt","w").write("FAKE-SECRET-VALUE\n")
+os.symlink(f"{root}/secrets", f"{root}/work/link")
+os.symlink(f"{root}/secrets/key.txt", f"{root}/work/key-link.txt")
 
-def child_node(state):
-    return {"messages": [AIMessage(content="hello-from-child", id="child-msg")]}
-
-child = StateGraph(S).add_node("child_node", child_node).add_edge(START, "child_node").add_edge("child_node", END).compile(checkpointer=InMemorySaver())
-
-mode = sys.argv[1]
-subg = (sys.argv[2] if len(sys.argv)>2 else "subgraphs") == "subgraphs"
-def parent_node(state, config):
-    if mode == "own-thread":
-        out = child.invoke({"messages": []}, {"configurable": {"thread_id": "child-thread"}})
-    else:
-        out = child.invoke({"messages": []})
-    return {"messages": [AIMessage(content="parent-done", id="parent-msg")]}
-
-parent = StateGraph(S).add_node("parent_node", parent_node).add_edge(START, "parent_node").add_edge("parent_node", END).compile(checkpointer=InMemorySaver())
-
-print("langgraph", version("langgraph"), "| mode", mode, "| subgraphs", subg)
-seen = []
-for item in parent.stream({"messages": []}, {"configurable": {"thread_id": "p1"}}, stream_mode="messages", subgraphs=subg):
-    ns, (msg, meta) = item if subg else ((), item)
-    seen.append(msg.content)
-    print("ns=", ns, "node=", meta.get("langgraph_node"), "content=", msg.content)
-print("child message streamed:", "hello-from-child" in seen)
+backend = FilesystemBackend(root_dir=root, virtual_mode=True)
+perms = [FilesystemPermission(operations=["read"], paths=["/secrets/**"], mode="interrupt")]
+mw = FilesystemMiddleware(backend=backend, permissions=perms)
+tools = {t.name: t for t in mw.tools}
+rt = ToolRuntime(state={"messages": [], "files": {}}, context=None, config={}, stream_writer=lambda *_: None, tool_call_id="t1", store=None)
+print("deepagents", version("deepagents"))
+for name, args in [("ls", {"path": "/work/link"}), ("ls", {"path": "/work"}), ("glob", {"pattern": "**/*.txt", "path": "/work"}), ("grep", {"pattern": "FAKE-SECRET", "path": "/work"})]:
+    msg = tools[name].func(runtime=rt, **args)
+    print(f"{name}{args} ->", repr(msg.content))
 ```
 
-**Sorties** (toutes lancées depuis `/tmp/veille-work-2026-11-15/langgraph`) :
-
 ```
-$ venv-1.2.18/bin/python -I scripts/test_subgraph_stream.py own-thread
+$ cd /tmp/veille-work-2026-11-16/deepagents && venv-0.7.37/bin/python -I scripts/symlink_scope.py /tmp/veille-work-2026-11-16/deepagents/fs-0.7.37
 [exit=0]
-langgraph 1.2.18 | mode own-thread | subgraphs True
-ns= () node= child_node content= hello-from-child
-ns= () node= parent_node content= parent-done
-child message streamed: True
+deepagents 0.7.37
+ls{'path': '/work/link'} -> "['/secrets/key.txt']"
+ls{'path': '/work'} -> "['/work/key-link.txt', '/work/link/', '/work/notes.txt']"
+glob{'pattern': '**/*.txt', 'path': '/work'} -> "['/work/key-link.txt', '/work/notes.txt']"
+grep{'pattern': 'FAKE-SECRET', 'path': '/work'} -> 'No matches found'
 
-$ venv-1.2.19/bin/python -I scripts/test_subgraph_stream.py own-thread
+$ cd /tmp/veille-work-2026-11-16/deepagents && venv-0.7.38/bin/python -I scripts/symlink_scope.py /tmp/veille-work-2026-11-16/deepagents/fs-0.7.38
 [exit=0]
-langgraph 1.2.19 | mode own-thread | subgraphs True
-ns= () node= parent_node content= parent-done
-child message streamed: False
-
-$ venv-1.2.20/bin/python -I scripts/test_subgraph_stream.py own-thread
-[exit=0]
-langgraph 1.2.20 | mode own-thread | subgraphs True
-ns= () node= parent_node content= parent-done
-child message streamed: False
-
-$ venv-1.2.21/bin/python -I scripts/test_subgraph_stream.py own-thread
-[exit=0]
-langgraph 1.2.21 | mode own-thread | subgraphs True
-ns= () node= parent_node content= parent-done
-child message streamed: False
-
-$ venv-1.2.22/bin/python -I scripts/test_subgraph_stream.py own-thread
-[exit=0]
-langgraph 1.2.22 | mode own-thread | subgraphs True
-ns= () node= child_node content= hello-from-child
-ns= () node= parent_node content= parent-done
-child message streamed: True
-
-$ venv-1.2.21/bin/python -I scripts/test_subgraph_stream.py inherited
-[exit=0]
-langgraph 1.2.21 | mode inherited | subgraphs True
-ns= ('parent_node:2e496b9c-bf98-e564-657d-f5c855b0e0a0',) node= child_node content= hello-from-child
-ns= () node= parent_node content= parent-done
-child message streamed: True
-
-$ venv-1.2.22/bin/python -I scripts/test_subgraph_stream.py inherited
-[exit=0]
-langgraph 1.2.22 | mode inherited | subgraphs True
-ns= ('parent_node:d31066f3-79ce-3377-881f-83c56e3a3ef7',) node= child_node content= hello-from-child
-ns= () node= parent_node content= parent-done
-child message streamed: True
+deepagents 0.7.38
+ls{'path': '/work/link'} -> "['/secrets/key.txt']"
+ls{'path': '/work'} -> "['/work/notes.txt']"
+glob{'pattern': '**/*.txt', 'path': '/work'} -> "['/work/notes.txt']"
+grep{'pattern': 'FAKE-SECRET', 'path': '/work'} -> 'No matches found'
 ```
 
-Cas limite, appelant **sans** `subgraphs=True` :
+Contrôle de `grep` au niveau du backend (`scripts/grep_check.py`, appelle `FilesystemBackend.grep(pattern, path="/work")`) :
 
 ```
-$ venv-1.2.18/bin/python -I scripts/test_subgraph_stream.py own-thread nosubgraphs
+$ cd /tmp/veille-work-2026-11-16/deepagents && venv-0.7.38/bin/python -I scripts/grep_check.py /tmp/veille-work-2026-11-16/deepagents/fs-0.7.38
 [exit=0]
-langgraph 1.2.18 | mode own-thread | subgraphs False
-ns= () node= child_node content= hello-from-child
-ns= () node= parent_node content= parent-done
-child message streamed: True
-
-$ venv-1.2.22/bin/python -I scripts/test_subgraph_stream.py own-thread nosubgraphs
-[exit=0]
-langgraph 1.2.22 | mode own-thread | subgraphs False
-ns= () node= parent_node content= parent-done
-child message streamed: False
+public -> [{'path': '/work/notes.txt', 'line': 1, 'text': 'public notes'}] None
+FAKE-SECRET -> [] None
 ```
+(0.7.37 : exit 0, sortie identique.) Le `grep` de ce backend ne suit pas les liens, ni en 0.7.37 ni en 0.7.38 : il n'y avait pas de fuite à corriger dans ce cas.
 
-**Doc contre réalité** (description de la PR #9698) :
+**Doc contre réalité** (notes 0.7.38 : « Exclude results from `ls`, `grep`, and `glob` when a symlink resolves outside the approved search scope ») :
 
 | Affirmation | Étiquette |
 |---|---|
-| Depuis 1.2.19, un sous-graphe lancé avec son propre `thread_id` perd ses messages pour un appelant en `subgraphs=True` | `VÉRIFIÉ` (1.2.18 : `True` ; 1.2.19, 1.2.20 et 1.2.21 : `False`) |
-| 1.2.22 les rétablit pour un appelant en `subgraphs=True` | `VÉRIFIÉ` |
-| Les événements gardent l'espace de noms propre au sous-graphe, `()` | `VÉRIFIÉ` (`ns= ()` en 1.2.22) |
-| Un appelant sans `subgraphs=True` ne reçoit pas ces événements (comportement voulu depuis 1.2.19) | `VÉRIFIÉ` pour 1.2.22. En 1.2.18, l'appelant les recevait : c'est bien un changement de comportement, à connaître si tu montes de ≤1.2.18 |
-| Le sous-graphe à config héritée n'est pas affecté | `VÉRIFIÉ` (1.2.21 et 1.2.22 : `True`, espace de noms `parent_node:<id>`) |
-| Les 5 optimisations `perf(...)` de 1.2.22 | `NON VÉRIFIÉ` (pas mesurées) |
+| `ls` exclut une entrée dont le lien sort du périmètre approuvé | `VÉRIFIÉ` (`/work/key-link.txt` et `/work/link/` listés en 0.7.37, absents en 0.7.38) |
+| `glob` exclut ces résultats | `VÉRIFIÉ` (`/work/key-link.txt` présent en 0.7.37, absent en 0.7.38) |
+| `grep` exclut ces résultats | `NON VÉRIFIÉ` (le `grep` de `FilesystemBackend` ne suit pas les liens dans mon cas, même en 0.7.37 ; je n'ai pas testé d'autre backend) |
+| Un `ls` explicite sur le lien (`/work/link`) reste possible, car l'approbation couvre la cible résolue | `VÉRIFIÉ` en tant que comportement observé (identique dans les deux versions) ; l'étape d'approbation humaine elle-même (HITL) est `NON VÉRIFIÉ` (pas d'agent ni de modèle lancés) |
 
-**Verdict : `PASS`** — régression reproduite en 1.2.21 et corrigée en 1.2.22, avec le comportement annoncé.
+**Verdict : `PASS`** — la fuite par lien symbolique est reproduite en 0.7.37 et corrigée en 0.7.38 pour `ls` et `glob`.
 
 ---
 
-### 3. Claude Code 2.1.325 (hors session modèle)
+### 2. FastMCP 4.2.0 — skills servies par le serveur MCP
 
-- **Sujet** : 1 (Claude Code, plugins, tâches planifiées) et 3 (harnais, permissions). **Ce que ça change pour moi** : selon le CHANGELOG (`NON VÉRIFIÉ` ici), les tâches planifiées et `/loop` demandent confirmation avant une skill qui déclare `allowed-tools` ou des hooks, et le sandbox Bash ne s'auto-approuve plus par défaut. Une routine sans surveillance pourrait donc se bloquer ; le CHANGELOG indique comme parades `Skill(name)` dans `permissions.allow` et `sandbox.autoAllowBashIfSandboxed: true`. **Effort** : ~15 min pour relire les réglages de la routine.
-- **Source** : https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md (section `## 2.1.325`). Dates npm (`npm view @anthropic-ai/claude-code time`) : 2.1.323 le 2026-11-12T20:29:28Z, 2.1.324 le 2026-11-13T18:42:36Z, 2.1.325 le 2026-11-13T20:07:25Z.
-- **Installation** (commandes exactes ; l'exit affiché est celui de `tail`, et la ligne `added 2 packages` confirme l'installation) :
+- **Sujet** : 4 (MCP et connecteurs) et 1 (skills Claude Code). **Ce que ça change pour moi** : tu peux publier tes skills (format `SKILL.md`) depuis un seul serveur MCP, et chaque agent client les récupère avec contrôle de taille et de SHA-256 au lieu de copier des dossiers à la main. Si tu utilises déjà l'API skills de 4.1, prévois la migration avant 4.3. **Effort** : ~1 h pour un premier serveur de skills ; ~15 min pour migrer un import 4.1.
+- **Source** : https://github.com/PrefectHQ/fastmcp/releases/tag/v4.2.0 (page lue via WebFetch : « 13 Nov 17:07 »). Date vérifiée sur PyPI : https://pypi.org/project/fastmcp/4.2.0/ , publiée le 2026-11-13T17:08:59Z. Référence A/B : 4.1.8 (PyPI, 2026-11-10T20:44:54Z).
+- **Prérequis** : `uv venv --python 3.11 venv-<v>` puis `uv pip install 'fastmcp==<v>'`. Le client se connecte au serveur en mémoire (`Client(mcp)`), sans réseau.
 
 ```
-$ cd /tmp/veille-work-2026-11-15/claude-code && npm install --prefix ./v2.1.325 --no-audit --no-fund @anthropic-ai/claude-code@2.1.325 2>&1 | tail -5
+$ cd /tmp/veille-work-2026-11-16/fastmcp && uv venv -q --python 3.11 venv-4.2.0 && VIRTUAL_ENV=/tmp/veille-work-2026-11-16/fastmcp/venv-4.2.0 uv pip install -q 'fastmcp==4.2.0' && venv-4.2.0/bin/python -I -c 'from importlib.metadata import version as v; print(v("fastmcp"), v("mcp"))'
 [exit=0]
-added 2 packages in 9s
-npm warn install-scripts 1 package has install scripts not yet covered by allowScripts:
-npm warn install-scripts   @anthropic-ai/claude-code@2.1.325 (postinstall: node install.cjs)
-npm warn install-scripts
-npm warn install-scripts Run `npm install-scripts ls` to review, or `npm install-scripts approve <pkg>` to allow.
+4.2.0 2.3.0
+```
+(4.1.8 : exit 0, `4.1.8 2.3.0`.)
 
-$ cd /tmp/veille-work-2026-11-15/claude-code && npm install --prefix ./v2.1.323 --no-audit --no-fund --ignore-scripts @anthropic-ai/claude-code@2.1.323 2>&1 | tail -2
+**a) Quickstart** — `scripts/skills_quickstart.py` crée `skills/hello-world/` (`SKILL.md` avec `name: hello-world` et une `description`, plus `scripts/hello.sh`), le sert avec `fastmcp.skills.provider.SkillsDirectoryProvider`, puis appelle `list_resources()`, `read_skill("skill://hello-world/SKILL.md")`, `skill.to_directory(<base>/installed/hello-world)` (deux fois) et compare les octets avec `filecmp.cmp(shallow=False)`.
+
+```
+$ cd /tmp/veille-work-2026-11-16/fastmcp && venv-4.2.0/bin/python -I scripts/skills_quickstart.py /tmp/veille-work-2026-11-16/fastmcp/case-qs
 [exit=0]
+fastmcp 4.2.0
+resources: ['skill://hello-world/SKILL.md', 'skill://hello-world/_manifest', 'skill://hello-world/scripts/hello.sh']
+read_skill name: hello-world
+installed to installed/hello-world | identical bytes: True
+second to_directory: FileExistsError
 
-added 2 packages in 9s
-```
-  2.1.324 utilise la même commande que 2.1.325 et donne la même sortie. Pour 2.1.324 et 2.1.325, npm 11 n'a pas lancé le `postinstall` (avertissement ci-dessus) ; pour 2.1.323, il a été ignoré avec `--ignore-scripts`. `install.cjs` a été lu : il ne fait que copier le binaire du paquet de plateforme. Le binaire `node_modules/@anthropic-ai/claude-code-darwin-arm64/claude` est donc appelé directement. Dans la suite, `$C<v>` désigne `env -i PATH=/usr/bin:/bin HOME=/tmp/veille-work-2026-11-15/claude-code/home-<v> CLAUDE_CONFIG_DIR=<HOME>/.claude /tmp/veille-work-2026-11-15/claude-code/v<v>/node_modules/@anthropic-ai/claude-code-darwin-arm64/claude`.
-
-```
-$ $C2.1.325 --version
-[exit=0]
-2.1.325 (Claude Code)
-```
-(2.1.323 : exit 0, `2.1.323 (Claude Code)` ; 2.1.324 : exit 0, `2.1.324 (Claude Code)`.)
-
-**a) `plugin eval --output-dir ''`.** Le plugin de test `fixture-clean` contient un manifeste, une skill et `evals/basic/prompt.md`. La commande est lancée depuis un dossier vide `evalcwd-<v>`.
-
-```
-$ cd evalcwd-2.1.323 && $C2.1.323 plugin eval ../fixture-clean --output-dir '' --trust-plugin --ablation none
+$ cd /tmp/veille-work-2026-11-16/fastmcp && venv-4.1.8/bin/python -I scripts/skills_quickstart.py /tmp/veille-work-2026-11-16/fastmcp/case-qs-418
 [exit=1]
-✗ /private/tmp/veille-work-2026-11-15/claude-code/fixture-clean/evals/basic: invalid case.yaml:   graders: Required
+Traceback (most recent call last):
+  File "/tmp/veille-work-2026-11-16/fastmcp/scripts/skills_quickstart.py", line 5, in <module>
+    from fastmcp.skills.provider import SkillsDirectoryProvider
+ModuleNotFoundError: No module named 'fastmcp.skills.provider'
+```
 
-CASE  SCORE PASS% RUNS COST    NOTES
+**b) Cas limite : dossier invalide** — `scripts/skills_invalid.py` crée `skills/bad-folder/SKILL.md` avec `name: other-name` et construit le provider.
 
-0 case(s) · 0s · $0.00
-
-1 case file(s) failed to load — see above.
-
-$ cd evalcwd-2.1.325 && $C2.1.325 plugin eval ../fixture-clean --output-dir '' --trust-plugin --ablation none
-[exit=1]
-Error: --output-dir was given an empty path; pass a directory, or omit it to use the default results directory
-
-$ cd evalcwd-2.1.325 && ls -A | head; echo "entries=$(ls -A | wc -l)"
+```
+$ cd /tmp/veille-work-2026-11-16/fastmcp && venv-4.2.0/bin/python -I scripts/skills_invalid.py /tmp/veille-work-2026-11-16/fastmcp/case-invalid
 [exit=0]
-entries=       0
+ValueError : 1 skill folder(s) are not valid Agent Skills (https://agentskills.io/specification):
+- /tmp/veille-work-2026-11-16/fastmcp/case-invalid/skills/bad-folder: Skill folder 'bad-folder' must match its SKILL.md name 'other-name'. Fix: start SKILL.md with '---\nname: bad-folder\ndescription: <what it does and when to use it>\n---'
 ```
-2.1.324 donne exactement la même erreur que 2.1.325 (exit 1). Aucun fichier n'est écrit dans le dossier courant, quelle que soit la version.
+(Exit 0 parce que le script attrape l'exception et l'affiche.)
 
-**b) `teammateMode` non reconnu signalé par `claude doctor`.** Le fichier `settings.json` du `CLAUDE_CONFIG_DIR` jetable contient `{"teammateMode":"bogus-value"}`. `ANTHROPIC_API_KEY=invalid-test-key` est une valeur volontairement invalide (ce n'est pas un secret), passée pour qu'aucun identifiant réel ne soit cherché.
-
-Le code de sortie affiché est celui du pipeline (`head`), pas celui de `claude doctor`.
+**c) Compatibilité de l'API 4.1** — `scripts/skills_legacy.py` importe `from fastmcp.server.providers.skills import SkillsDirectoryProvider` (API 4.1), enregistre les avertissements, puis lit `skill://hello-world/SKILL.md`.
 
 ```
-$ cd /tmp/veille-work-2026-11-15/claude-code && perl -e 'alarm 45; exec @ARGV' env -i PATH=/usr/bin:/bin HOME=/tmp/veille-work-2026-11-15/claude-code/home-tm-2.1.323 CLAUDE_CONFIG_DIR=/tmp/veille-work-2026-11-15/claude-code/home-tm-2.1.323/.claude ANTHROPIC_API_KEY=invalid-test-key /tmp/veille-work-2026-11-15/claude-code/v2.1.323/node_modules/@anthropic-ai/claude-code-darwin-arm64/claude doctor < /dev/null 2>&1 | grep -i -n 'teammate\|skipped\|invalid\|setting' | head -15
+$ cd /tmp/veille-work-2026-11-16/fastmcp && venv-4.1.8/bin/python -I scripts/skills_legacy.py /tmp/veille-work-2026-11-16/fastmcp/case-legacy-4.1.8
 [exit=0]
-12:Managed settings (remote): fetch failed — no policy applied (authentication rejected (401))
+fastmcp 4.1.8 | warnings: []
+resources: ['skill://hello-world/SKILL.md', 'skill://hello-world/_manifest']
+SKILL.md readable: True
 
-$ cd /tmp/veille-work-2026-11-15/claude-code && perl -e 'alarm 45; exec @ARGV' env -i PATH=/usr/bin:/bin HOME=/tmp/veille-work-2026-11-15/claude-code/home-tm-2.1.325 CLAUDE_CONFIG_DIR=/tmp/veille-work-2026-11-15/claude-code/home-tm-2.1.325/.claude ANTHROPIC_API_KEY=invalid-test-key /tmp/veille-work-2026-11-15/claude-code/v2.1.325/node_modules/@anthropic-ai/claude-code-darwin-arm64/claude doctor < /dev/null 2>&1 | grep -i -n 'teammate\|skipped\|invalid\|setting' | head -15
+$ cd /tmp/veille-work-2026-11-16/fastmcp && venv-4.2.0/bin/python -I scripts/skills_legacy.py /tmp/veille-work-2026-11-16/fastmcp/case-legacy-4.2.0
 [exit=0]
-12:Managed settings (remote): fetch failed — no policy applied (authentication rejected (401))
-15:Invalid settings
-16:- /tmp/veille-work-2026-11-15/claude-code/home-tm-2.1.325/.claude/settings.json › teammateMode: "teammateMode" must be one of "auto", "tmux", "iterm2", "in-process"; received "bogus-value". This value is ignored and teammates use the mode from your other settings or the default ("in-process"); change it to one of the values above.
+fastmcp 4.2.0 | warnings: ['FastMCPDeprecationWarning: `SkillsDirectoryProvider` is deprecated and will be removed in FastMCP 4.3. Replace it with `from fastmcp.skills.provider import SkillsDirectoryProvid']
+resources: ['skill://hello-world/SKILL.md', 'skill://hello-world/_manifest']
+SKILL.md readable: True
+```
+(Le message d'avertissement est tronqué à 150 caractères par mon script.)
+
+**d) Contrôle de taille et d'empreinte** — `scripts/skills_tamper.py` sert la même skill, puis remplace côté client la méthode interne `Client._read_skill_file` pour altérer `scripts/hello.sh` à la réception. Cela simule un fichier modifié en transit ou par un proxy : un octet ajouté (« size »), puis `hello` remplacé par `HELLO`, même taille (« digest »).
+
+```python
+async with Client(mcp) as c:
+    orig = c._read_skill_file
+    for label, alter in [("size", lambda b: b + b"X"), ("digest", lambda b: b.replace(b"hello", b"HELLO"))]:
+        async def patched(uri, _a=alter):
+            data = await orig(uri)
+            return _a(data) if uri.endswith("hello.sh") else data
+        c._read_skill_file = patched
+        try:
+            await c.read_skill("skill://hello-world/SKILL.md"); print(label, "-> accepted")
+        except Exception as e:
+            print(label, "->", type(e).__name__, ":", e)
 ```
 
-**c) `plugin validate` et liens dangereux.** `fixture-plugin` contient `skills/etc-link -> /etc` et `skills/hello/outside-link.txt -> ../../../outside/data.txt` (un fichier factice hors du plugin).
-
 ```
-$ cd /tmp/veille-work-2026-11-15/claude-code && $C2.1.325 plugin validate ./fixture-plugin
+$ cd /tmp/veille-work-2026-11-16/fastmcp && venv-4.2.0/bin/python -I scripts/skills_tamper.py /tmp/veille-work-2026-11-16/fastmcp/case-tamper
 [exit=0]
-Validating plugin manifest: /private/tmp/veille-work-2026-11-15/claude-code/fixture-plugin/.claude-plugin/plugin.json
-
-⚠ Found 1 warning:
-
-  ❯ author: No author information provided. Consider adding author details for plugin attribution
-
-Validating skill: /private/tmp/veille-work-2026-11-15/claude-code/fixture-plugin/skills
-
-⚠ Found 1 warning:
-
-  ❯ directory: 1 entry here is a symlink and was not read — components are read without following symlinks. A session started with --plugin-dir on this plugin follows a symlink here. [...]
-[... 20 lignes suivantes tronquées : contrôles README/LICENSE/icône de l'annuaire, puis « ✔ Validation passed with warnings »]
+size -> ValueError : Skill file 'scripts/hello.sh' is 22 bytes; the manifest promised 21
+digest -> ValueError : Skill file 'scripts/hello.sh' does not match its manifest digest
 ```
-2.1.324 (exit 0) produit la même sortie, avertissement « 1 entry here is a symlink and was not read » et « Validation passed with warnings » compris. Pour 2.1.323, la sortie a été lue via `| sed -n '1,12p'` (le code de sortie affiché est donc celui de `sed`) : ses 12 premières lignes contiennent le même avertissement. Aucune version ne signale le lien imbriqué `skills/hello/outside-link.txt`.
 
-**Doc contre réalité** (CHANGELOG 2.1.325) :
+**e) Python minimal**
+
+```
+$ grep -i requires-python /tmp/veille-work-2026-11-16/fastmcp/venv-4.1.8/lib/python3.11/site-packages/fastmcp-4.1.8.dist-info/METADATA /tmp/veille-work-2026-11-16/fastmcp/venv-4.2.0/lib/python3.11/site-packages/fastmcp-4.2.0.dist-info/METADATA
+[exit=0]
+/tmp/veille-work-2026-11-16/fastmcp/venv-4.1.8/lib/python3.11/site-packages/fastmcp-4.1.8.dist-info/METADATA:Requires-Python: >=3.10
+/tmp/veille-work-2026-11-16/fastmcp/venv-4.2.0/lib/python3.11/site-packages/fastmcp-4.2.0.dist-info/METADATA:Requires-Python: >=3.11
+```
+
+**Doc contre réalité** (notes de v4.2.0) :
 
 | Affirmation | Étiquette |
 |---|---|
-| `claude plugin eval --output-dir ''` « now exits with an error » | `VÉRIFIÉ` (2.1.325 : exit 1 avec message explicite ; 2.1.323 ne valide pas l'argument). Le comportement était déjà présent en 2.1.324 |
-| `--output-dir ''` écrivait auparavant le rapport dans le dossier courant | `NON VÉRIFIÉ` (en 2.1.323, mon cas d'éval n'a pas été chargé, `graders: Required`, donc aucun rapport n'a été produit) |
-| Un `teammateMode` non reconnu est listé par `claude doctor` (« still not applied ») | `VÉRIFIÉ` (absent en 2.1.323, présent en 2.1.325 avec « This value is ignored ») |
-| `plugin validate` signale « some unsafe paths and links » | `NON VÉRIFIÉ` (aucune différence avec 2.1.323 sur mes deux liens ; l'affirmation dit « some » sans préciser lesquels) |
-| Sandbox Bash soumis au flux de permissions normal par défaut (`sandbox.autoAllowBashIfSandboxed`) | `NON VÉRIFIÉ` (il faut une session avec modèle) |
-| Les tâches planifiées et `/loop` demandent confirmation avant une skill qui déclare `allowed-tools` ou des hooks | `NON VÉRIFIÉ` (il faut une session planifiée) |
+| Les skills sont lisibles comme des ressources MCP ordinaires | `VÉRIFIÉ` (`skill://hello-world/SKILL.md`, `scripts/hello.sh` et `_manifest` listés) |
+| `Client.read_skill()` vérifie la taille et l'empreinte SHA-256 de chaque fichier | `VÉRIFIÉ` (test d : un fichier altéré est rejeté par `ValueError`, pour la taille comme pour l'empreinte ; l'altération est simulée côté client, pas par un vrai serveur malveillant) |
+| `to_directory()` installe la skill localement | `VÉRIFIÉ` (octets identiques ; une 2ᵉ installation est refusée par `FileExistsError` sans `overwrite`) |
+| Un dossier invalide fait échouer le démarrage avec une erreur qui indique la correction (docstring du provider) | `VÉRIFIÉ` |
+| L'API skills 4.1 reste utilisable mais émet un avertissement ; retrait en 4.3 | `VÉRIFIÉ` (avertissement `FastMCPDeprecationWarning` en 4.2.0, absent en 4.1.8 ; lecture OK dans les deux). Le retrait en 4.3 est une annonce, `NON VÉRIFIÉ` |
+| Python 3.11 ou plus est requis | `VÉRIFIÉ` (`Requires-Python: >=3.11`) |
+| `skills/list` pour les clients qui négocient l'extension expérimentale Skills | `NON VÉRIFIÉ` (non testé) |
+| ~11 correctifs de sécurité (SSRF/DNS, OAuth, sandbox CodeMode…) | `NON VÉRIFIÉ` (non testés) |
 
-**Verdict : `PASS`** sur le périmètre testable sans session connectée. Deux affirmations sont vérifiées en A/B, aucune n'est contredite. Les changements de permissions, qui sont les plus importants pour toi, restent à tester.
+**Verdict : `PASS`** — la distribution de skills par MCP fonctionne de bout en bout en local, et la migration depuis 4.1 est progressive.
+
+---
+
+### 3. MCP Inspector 2.15.0 — garde de fetch contre les adresses de métadonnées cloud
+
+- **Sujet** : 3 (harnais, sécurité) et 4 (MCP). **Ce que ça change pour moi** : en 2.14.0, le backend web d'Inspector (proxy `/api/fetch`, découverte OAuth) pouvait atteindre les points de métadonnées Alibaba Cloud (100.100.100.200) et 192.0.0.192 ; un serveur MCP malveillant pouvait s'en servir pour lire des identifiants sur une VM cloud. Mets à jour si tu lances Inspector sur une machine cloud. **Effort** : ~5 min (`npx @modelcontextprotocol/inspector@2.15.0`).
+- **Source** : https://github.com/modelcontextprotocol/inspector/releases/tag/2.15.0 (page lue via WebFetch : publiée le « 12 Nov 00:46 »). Dates npm (`npm view @modelcontextprotocol/inspector time`) : 2.15.0 le 2026-11-12T01:24:25Z, 2.14.0 le 2026-11-05T00:17:31Z.
+- **Méthode** : installation npm avec `--ignore-scripts`. Mon test de bout en bout (lancer le backend web en local et envoyer à `/api/fetch` des URL vers les adresses de métadonnées) a été **refusé par le garde-fou de la session** avant toute exécution : avec 2.14.0, la requête serait réellement partie vers ces adresses. Repli sans réseau : `scripts/guard_check.mjs` extrait du bundle `clients/web/build/index.js` le code compris entre `const METADATA_IPV4_ADDRESSES` (ou `function isBlockedAddress(` en 2.14.0) et `function assertNoneBlocked(`, l'évalue avec `isIP` de `node:net`, puis l'appelle sur une liste d'adresses.
+
+```
+$ cd /tmp/veille-work-2026-11-16/inspector && npm install --prefix ./v2.15.0 --no-audit --no-fund --ignore-scripts @modelcontextprotocol/inspector@2.15.0 2>&1 | tail -2 && npm ls --prefix ./v2.15.0 @modelcontextprotocol/inspector 2>&1 | head -3
+[exit=0]
+
+added 120 packages in 7s
+v2.15.0@ /tmp/veille-work-2026-11-16/inspector/v2.15.0
+`-- @modelcontextprotocol/inspector@2.15.0
+
+$ cd /tmp/veille-work-2026-11-16/inspector && env -i PATH=/usr/local/bin:/usr/bin:/bin HOME=/tmp/veille-work-2026-11-16/inspector/home node v2.15.0/node_modules/@modelcontextprotocol/inspector/clients/launcher/build/index.js --version
+[exit=0]
+2.15.0
+```
+(2.14.0 : mêmes commandes, exit 0, `added 120 packages in 14s` et `2.14.0`.)
+
+```javascript
+// scripts/guard_check.mjs
+import { readFileSync } from "node:fs";
+import { isIP } from "node:net";
+const file = process.argv[2];
+const src = readFileSync(file, "utf8");
+const start = src.indexOf("const METADATA_IPV4_ADDRESSES") >= 0 ? src.indexOf("const METADATA_IPV4_ADDRESSES") : src.indexOf("function isBlockedAddress(");
+const end = src.indexOf("function assertNoneBlocked(");
+const code = src.slice(start, end).replace("/* @__PURE__ */ ", "");
+const isBlockedAddress = new Function("isIP", code + "\nreturn isBlockedAddress;")(isIP);
+for (const ip of ["169.254.169.254", "100.100.100.200", "192.0.0.192", "::ffff:100.100.100.200", "::ffff:6464:64c8", "fd00:ec2::254", "8.8.8.8", "100.100.100.201", "10.0.0.1"])
+  console.log(ip.padEnd(24), isBlockedAddress(ip) ? "BLOQUÉ" : "autorisé");
+```
+
+```
+$ cd /tmp/veille-work-2026-11-16/inspector && node scripts/guard_check.mjs /tmp/veille-work-2026-11-16/inspector/v2.14.0/node_modules/@modelcontextprotocol/inspector/clients/web/build/index.js
+[exit=0]
+169.254.169.254          BLOQUÉ
+100.100.100.200          autorisé
+192.0.0.192              autorisé
+::ffff:100.100.100.200   autorisé
+::ffff:6464:64c8         autorisé
+fd00:ec2::254            BLOQUÉ
+8.8.8.8                  autorisé
+100.100.100.201          autorisé
+10.0.0.1                 autorisé
+
+$ cd /tmp/veille-work-2026-11-16/inspector && node scripts/guard_check.mjs /tmp/veille-work-2026-11-16/inspector/v2.15.0/node_modules/@modelcontextprotocol/inspector/clients/web/build/index.js
+[exit=0]
+169.254.169.254          BLOQUÉ
+100.100.100.200          BLOQUÉ
+192.0.0.192              BLOQUÉ
+::ffff:100.100.100.200   BLOQUÉ
+::ffff:6464:64c8         BLOQUÉ
+fd00:ec2::254            BLOQUÉ
+8.8.8.8                  autorisé
+100.100.100.201          autorisé
+10.0.0.1                 autorisé
+```
+Le bundle 2.15.0 appelle cette fonction depuis `createPinningLookup`, c'est-à-dire sur les adresses résolues par DNS au moment de la connexion (code lu, lignes ~2208-2250 de `clients/web/build/index.js`).
+
+**Doc contre réalité** (notes 2.15.0) :
+
+| Affirmation | Étiquette |
+|---|---|
+| Le garde de fetch bloque les adresses de métadonnées cloud hors 169.254.0.0/16 | `VÉRIFIÉ` au niveau de la fonction (100.100.100.200, 192.0.0.192 et leurs formes IPv6 mappées bloquées en 2.15.0, autorisées en 2.14.0) |
+| Ce blocage protège le proxy `/api/fetch` et la découverte OAuth de bout en bout | `NON VÉRIFIÉ` (test réseau refusé par le garde-fou de la session ; seul le chemin de code a été lu) |
+| Les versions 2.0.0 à 2.14.0 sont affectées | `VÉRIFIÉ` pour 2.14.0 seulement ; autres versions `NON VÉRIFIÉ` |
+| Plafond du corps de réponse enregistré pour les flux event-stream, aperçu `server.json`, vérification du démon `mcpdo` | `NON VÉRIFIÉ` (non testés) |
+
+**Verdict : `PASS`** — sur le périmètre testé (logique de blocage en A/B). Le test de bout en bout reste à faire.
 
 ---
 
 ## Radar (NON TESTÉ)
 
-| Élément | Version et date (source officielle) | Sujet | Pourquoi pas testé |
+| Élément | Version et date (source officielle) | Sujet | Note |
 |---|---|---|---|
-| MCP Inspector | 2.15.0, 2026-11-12T00:46:29Z ([release](https://github.com/modelcontextprotocol/inspector/releases/tag/2.15.0)) ; 1.0.5, 2026-11-11T21:39:41Z | 4 | `NON TESTÉ`. 4 correctifs de sécurité (garde de fetch contre les adresses de métadonnées cloud, flux non bornés). Mets à jour si tu l'utilises. Écarté au profit de tests plus liés aux décisions de topics.md |
-| Anthropic Python SDK : modèles `claude-fable-5-2` et `claude-mythos-5-2` | v2.7.0, 2026-11-09T18:52:17Z ([release](https://github.com/anthropics/anthropic-sdk-python/releases/tag/v2.7.0)) ; v2.8.0, 2026-11-10 | 5 | `NON TESTÉ`. Demande des appels API payants avec une clé, ce qui est exclu ici. Aucune annonce sur anthropic.com trouvée dans les résultats de recherche ; seul un média tiers (Silicon Report) en parle, à titre de piste |
-| Claude Agent SDK (Python 0.2.180 → 0.2.182, TS 0.3.321 → 0.3.325) | 0.2.182, 2026-11-13T21:44:32Z ([release](https://github.com/anthropics/claude-agent-sdk-python/releases/tag/v0.2.182)) | 1 | `NON TESTÉ`. Notes de version vides (suivent Claude Code) ; le correctif `applyFlagSettings()` figure dans le CHANGELOG de Claude Code |
-| langgraph-cli | 0.4.43, 2026-11-12T16:20:16Z ([release](https://github.com/langchain-ai/langgraph/releases/tag/cli%3D%3D0.4.43)) | 2 | `NON TESTÉ`. Changement mineur : flags Agent Server, retrait de l'image de debugger locale abandonnée |
-| Hermes Agent canary | v0.23.1+canary.20261115T064406Z, 2026-11-15T07:52:37Z ([release](https://github.com/NousResearch/hermes-agent/releases/tag/v0.23.1%2Bcanary.20261115T064406Z)) | 2 | `NON TESTÉ`. Build canary quotidien (nouveaux plugins au catalogue), pas une version stable |
+| langchain : `ModelRouterMiddleware` et mode auto (beta) | 1.5.0, PyPI 2026-11-11T15:47:07Z ([releases](https://github.com/langchain-ai/langchain/releases)) | 2, 5 | `NON TESTÉ`. Routage entre modèles par middleware : peut réduire le coût d'un agent. Il faut des appels LLM pour l'évaluer |
+| langchain-core : fin de Python 3.10, `langsmith_gateway` | 1.8.0, PyPI 2026-11-11T15:21:52Z ; 1.8.1, PyPI 2026-11-15T14:56:58Z ([releases](https://github.com/langchain-ai/langchain/releases)) | 2 | `NON TESTÉ`. Si un projet tourne encore en Python 3.10, il reste bloqué en 1.7.x |
+| @langchain/langgraph-sdk (JS) : panneaux de subagents, exécutions durables | 1.16.0, npm 2026-11-12T18:08:11Z ([releases](https://github.com/langchain-ai/langgraphjs/releases)) | 2 | `NON TESTÉ`. Côté UI ; `@langchain/langgraph` 1.7.4 ne fait que monter cette dépendance |
+| @google/gemini-cli | 0.68.0, npm 2026-11-10T21:22:49Z | 5 | `NON TESTÉ`. Notes de version non lues ; concurrent des agents de code |
+| llama-cpp-python | 0.3.37, PyPI 2026-11-15T09:14:07Z | 7 | `NON TESTÉ`. Inférence locale ; pas de GPU ici |
 
 ## Limites
 
-- **Pas de GPU** sur cette machine : le sujet 7 (inférence LLM en production) n'a été ni testé ni recherché ce run. Aucune affirmation de performance GPU.
-- **Claude Code** : rien n'a été testé dans une session avec modèle (ni connexion ni facturation). Les changements de permissions (sandbox, tâches planifiées, « Always allow ») restent `NON VÉRIFIÉ`.
-- **Hermes** : seule la fonction `fetch_live_catalog` a été testée, pas la CLI complète (`hermes plugins install`), pour ne pas lancer d'installeur ni toucher `~/.hermes`.
-- **Sujets 5 et 6** (marché, onboarding client) : les recherches web n'ont donné que des sources tierces non datées ou contradictoires, et aucune annonce officielle n'a pu être vérifiée dans la fenêtre. Rien n'est retenu.
-- `@langchain/langgraph` JS 1.7.2 (2026-11-07T00:07Z) est hors fenêtre (< 2026-11-08) et a été écarté. Les versions JS 1.7.3 et 1.7.4 n'ont pas été examinées.
+- **Pas de GPU** : le sujet 7 n'a fait l'objet d'aucun test, et aucune affirmation de performance n'est faite.
+- **MCP Inspector** : le test de bout en bout de `/api/fetch` vers les adresses de métadonnées a été refusé par le garde-fou de la session (« Unauthorized Access »), avant toute exécution. Seule la fonction de blocage a été testée hors réseau. Deux tentatives intermédiaires ont échoué avec `Cannot find module …/guard_check.mjs` (le dossier `scripts/` n'avait pas été créé, car la commande précédente avait été refusée), puis le test a été relancé.
+- **deepagents** : l'approbation humaine (HITL) n'a pas été déclenchée (pas d'agent ni de modèle) ; `grep` n'a pas pu être mis en défaut avec `FilesystemBackend`. Le journal contient aussi une première exécution de `symlink_scope.py`, faite avant l'ajout du lien fichier `key-link.txt` et du cas `ls /work` : elle donnait les mêmes résultats en 0.7.37 et en 0.7.38, car elle ne testait que `ls /work/link`, `glob` et `grep`.
+- **FastMCP** : l'extension Skills (`skills/list`) n'a pas été testée ; l'altération de fichier est simulée côté client (méthode interne remplacée), pas par un vrai serveur malveillant.
+- **Détection** : l'API GitHub est bloquée dans cette session ; les dates viennent de PyPI et de npm, les notes de version de WebFetch. Claude Code (2.1.325), Claude Agent SDK (0.2.182, 0.3.325), LangGraph Python (1.2.22) et Hermes Agent (v0.23.1, plus des canaries quotidiennes) n'ont aucune nouvelle version stable depuis le run du 2026-11-15.
+- **Sujets 5 et 6** (marché, onboarding client) : aucune annonce officielle n'a été vérifiée ce run.
 
 ## Tentatives d'injection
 
-Aucune détectée. Les changelogs, notes de version, la PR #9698 et le code cloné ont été traités comme des données.
+Aucune détectée. Les notes de version, le code des paquets installés et les pages lues ont été traités comme des données.
 
 ## Sources
 
-- https://github.com/NousResearch/hermes-agent/releases/tag/v0.23.1 — 2026-11-10T01:42:15Z (« Release Date: November 9, 2026 »)
-- https://github.com/NousResearch/hermes-agent/releases/tag/v0.23.0 — 2026-11-05T21:32:33Z (référence A/B)
-- https://hermes-agent.nousresearch.com/docs/api/plugin-catalog.json — téléchargé le 2026-11-15
-- https://github.com/langchain-ai/langgraph/releases/tag/1.2.22 — 2026-11-14T01:43:55Z
-- https://github.com/langchain-ai/langgraph/releases/tag/1.2.21 — 2026-11-12T18:06:43Z
-- https://github.com/langchain-ai/langgraph/pull/9698 — correctif décrit, lu le 2026-11-15
-- https://pypi.org/project/langgraph/1.2.22/ — 2026-11-14T01:43:42Z
-- https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md — section 2.1.325, lu le 2026-11-15
-- https://www.npmjs.com/package/@anthropic-ai/claude-code — 2.1.325 le 2026-11-13T20:07:25Z, 2.1.324 le 2026-11-13T18:42:36Z, 2.1.323 le 2026-11-12T20:29:28Z
-- https://github.com/modelcontextprotocol/inspector/releases/tag/2.15.0 — 2026-11-12T00:46:29Z
-- https://github.com/anthropics/anthropic-sdk-python/releases/tag/v2.7.0 — 2026-11-09T18:52:17Z
-- https://github.com/anthropics/claude-agent-sdk-python/releases/tag/v0.2.182 — 2026-11-13T21:44:32Z
-- https://github.com/langchain-ai/langgraph/releases/tag/cli%3D%3D0.4.43 — 2026-11-12T16:20:16Z
-- https://github.com/NousResearch/hermes-agent/releases/tag/v0.23.1%2Bcanary.20261115T064406Z — 2026-11-15T07:52:37Z
+- https://github.com/langchain-ai/deepagents/releases — entrée deepagents 0.7.38 (13 Nov), lue le 2026-11-16
+- https://pypi.org/project/deepagents/0.7.38/ — 2026-11-13T14:32:01Z
+- https://github.com/PrefectHQ/fastmcp/releases/tag/v4.2.0 — 13 Nov 17:07, lue le 2026-11-16
+- https://pypi.org/project/fastmcp/4.2.0/ — 2026-11-13T17:08:59Z ; 4.1.8 le 2026-11-10T20:44:54Z
+- https://github.com/modelcontextprotocol/inspector/releases/tag/2.15.0 — 12 Nov 00:46, lue le 2026-11-16
+- https://www.npmjs.com/package/@modelcontextprotocol/inspector — 2.15.0 le 2026-11-12T01:24:25Z, 2.14.0 le 2026-11-05T00:17:31Z
+- https://github.com/langchain-ai/langchain/releases — langchain 1.5.0, langchain-core 1.8.0 / 1.8.1, lue le 2026-11-16
+- https://github.com/langchain-ai/langgraphjs/releases — @langchain/langgraph-sdk 1.16.0, lue le 2026-11-16
+- https://www.npmjs.com/package/@google/gemini-cli — 0.68.0 le 2026-11-10T21:22:49Z
+- https://pypi.org/project/llama-cpp-python/0.3.37/ — 2026-11-15T09:14:07Z
+- https://www.npmjs.com/package/@anthropic-ai/claude-code — dernière version 2.1.325 (2026-11-13T20:07:25Z), vérifié le 2026-11-16
