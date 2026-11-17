@@ -9,3 +9,6 @@ Une ligne par test : `date | élément | version | verdict | rapport`. L'agent a
 2026-11-16 | deepagents (liens symboliques hors périmètre dans ls/glob) | 0.7.38 | PASS | reports/2026-11-16.md
 2026-11-16 | fastmcp (skills servies par MCP, read_skill/to_directory, API 4.1 dépréciée) | 4.2.0 | PASS | reports/2026-11-16.md
 2026-11-16 | mcp-inspector (garde de fetch : adresses de métadonnées, test hors réseau) | 2.15.0 | PASS | reports/2026-11-16.md
+2026-11-17 | claude-code (avertissement --allowedTools, réglages >64 niveaux, erreurs mcp add-json ; A/B 2.1.325) | 2.1.326 | PASS | reports/2026-11-17.md
+2026-11-17 | anthropic SDK Python (agent toolset : faux rg dans workdir, FIFO, liens hors /memories ; A/B 2.8.0) | 2.9.0 | PASS | reports/2026-11-17.md
+2026-11-17 | deepagents (StoreBackend : octets NUL stockés en base64 ; A/B 0.7.38) | 0.7.39 | PASS | reports/2026-11-17.md
