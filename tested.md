@@ -12,3 +12,6 @@ Une ligne par test : `date | élément | version | verdict | rapport`. L'agent a
 2026-11-17 | claude-code (avertissement --allowedTools, réglages >64 niveaux, erreurs mcp add-json ; A/B 2.1.325) | 2.1.326 | PASS | reports/2026-11-17.md
 2026-11-17 | anthropic SDK Python (agent toolset : faux rg dans workdir, FIFO, liens hors /memories ; A/B 2.8.0) | 2.9.0 | PASS | reports/2026-11-17.md
 2026-11-17 | deepagents (StoreBackend : octets NUL stockés en base64 ; A/B 0.7.38) | 0.7.39 | PASS | reports/2026-11-17.md
+2026-11-18 | claude-code (.mcp.json préservé par mcp add/remove projet, mcp add-json depuis stdin ; A/B 2.1.326) | 2.1.327 | PASS | reports/2026-11-18.md
+2026-11-18 | claude-agent-sdk TypeScript (hooks en Set et agents circulaire/BigInt refusés avant lancement ; A/B 0.3.326) | 0.3.327 | PASS | reports/2026-11-18.md
+2026-11-18 | fastmcp (JWTVerifier refuse un nbf futur, tolérance 30 s ; A/B 4.2.0) | 4.2.1 | PASS | reports/2026-11-18.md
