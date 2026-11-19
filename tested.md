@@ -15,3 +15,6 @@ Une ligne par test : `date | élément | version | verdict | rapport`. L'agent a
 2026-11-18 | claude-code (.mcp.json préservé par mcp add/remove projet, mcp add-json depuis stdin ; A/B 2.1.326) | 2.1.327 | PASS | reports/2026-11-18.md
 2026-11-18 | claude-agent-sdk TypeScript (hooks en Set et agents circulaire/BigInt refusés avant lancement ; A/B 0.3.326) | 0.3.327 | PASS | reports/2026-11-18.md
 2026-11-18 | fastmcp (JWTVerifier refuse un nbf futur, tolérance 30 s ; A/B 4.2.0) | 4.2.1 | PASS | reports/2026-11-18.md
+2026-11-19 | claude-code (onFailure:block sur hooks mcp_tool via faux endpoint API, FORCE_COLOR négatif ; A/B 2.1.327) | 2.1.328 | PASS | reports/2026-11-19.md
+2026-11-19 | deepagents (sortie conservée au timeout shell, commande annulée réellement arrêtée ; A/B 0.7.39) | 0.7.40 | PASS | reports/2026-11-19.md
+2026-11-19 | fastmcp (list_skills avec ResourcesAsTools/PromptsAsTools, Namespace masque ; A/B 4.2.1) | 4.2.2 | PASS | reports/2026-11-19.md
