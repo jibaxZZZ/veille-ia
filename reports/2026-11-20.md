@@ -237,7 +237,6 @@ Vus sans être retenus comme candidats : Claude Agent SDK TS 0.3.329 (npm 2026-1
 - **Claude Code 2.1.329** : la plupart des ~150 lignes du changelog (UI, VS Code, Code Mode, runner auto-hébergé, tâches planifiées, `/tasks`) ne sont pas testées. La troncature de `--help` dans un pipe n'a pas été reproduite (`NON VÉRIFIÉ`). Les 6 envois identiques sur erreur 400 sont un constat sans explication.
 - **LangGraph** : seul le réducteur expérimental `DeltaChannel` est couvert, pas `add_messages` standard ni les checkpointers Postgres.
 - **Accès** : l'API REST GitHub est refusée à cette session pour les dépôts tiers ; les notes viennent des pages publiques et des CHANGELOG bruts.
-- **Push du run précédent** : le commit du 2026-11-19 n'était pas sur `origin/main` au début de ce run (seulement sur la branche de session) ; il est repris dans le push de ce run.
 - Durée des tests : environ 25 minutes, sous la limite de 45 minutes. Aucun test n'a dépassé 10 minutes.
 
 ## Tentatives d'injection
