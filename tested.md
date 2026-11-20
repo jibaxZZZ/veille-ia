@@ -18,3 +18,6 @@ Une ligne par test : `date | élément | version | verdict | rapport`. L'agent a
 2026-11-19 | claude-code (onFailure:block sur hooks mcp_tool via faux endpoint API, FORCE_COLOR négatif ; A/B 2.1.327) | 2.1.328 | PASS | reports/2026-11-19.md
 2026-11-19 | deepagents (sortie conservée au timeout shell, commande annulée réellement arrêtée ; A/B 0.7.39) | 0.7.40 | PASS | reports/2026-11-19.md
 2026-11-19 | fastmcp (list_skills avec ResourcesAsTools/PromptsAsTools, Namespace masque ; A/B 4.2.1) | 4.2.2 | PASS | reports/2026-11-19.md
+2026-11-20 | claude-code (relance auto sur erreur max_tokens supprimée, CLAUDE_CODE_MAX_OUTPUT_TOKENS via faux endpoint API ; A/B 2.1.328) | 2.1.329 | PASS | reports/2026-11-20.md
+2026-11-20 | anthropic SDK Python (espaces en %20 dans la query, signature SigV4 AnthropicAWS vérifiée localement ; A/B 2.10.0) | 2.11.0 | PASS | reports/2026-11-20.md
+2026-11-20 | langgraph (REMOVE_ALL_MESSAGES dans _messages_delta_reducer, DeltaChannel avec checkpoint None ; A/B 1.2.23) | 1.2.24 | PASS | reports/2026-11-20.md
