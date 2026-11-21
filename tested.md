@@ -21,3 +21,6 @@ Une ligne par test : `date | élément | version | verdict | rapport`. L'agent a
 2026-11-20 | claude-code (relance auto sur erreur max_tokens supprimée, CLAUDE_CODE_MAX_OUTPUT_TOKENS via faux endpoint API ; A/B 2.1.328) | 2.1.329 | PASS | reports/2026-11-20.md
 2026-11-20 | anthropic SDK Python (espaces en %20 dans la query, signature SigV4 AnthropicAWS vérifiée localement ; A/B 2.10.0) | 2.11.0 | PASS | reports/2026-11-20.md
 2026-11-20 | langgraph (REMOVE_ALL_MESSAGES dans _messages_delta_reducer, DeltaChannel avec checkpoint None ; A/B 1.2.23) | 1.2.24 | PASS | reports/2026-11-20.md
+2026-11-21 | claude-code (relance max_tokens rétablie via faux endpoint, garde rm sur 13 variantes, hook SessionStart avec -p --continue ; A/B 2.1.329) | 2.1.330 | PASS | reports/2026-11-21.md
+2026-11-21 | anthropic SDK Python (user_profile_id déplacé de l'en-tête vers le corps pour AnthropicBedrock sync/async ; A/B 2.11.0) | 2.12.0 | PASS | reports/2026-11-21.md
+2026-11-21 | fastmcp (outil OpenAPI sans paramètre de chemin requis : erreur de validation, user_id vide non bloqué ; A/B 4.2.2) | 4.2.3 | PASS | reports/2026-11-21.md
