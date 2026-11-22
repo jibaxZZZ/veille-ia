@@ -24,3 +24,6 @@ Une ligne par test : `date | élément | version | verdict | rapport`. L'agent a
 2026-11-21 | claude-code (relance max_tokens rétablie via faux endpoint, garde rm sur 13 variantes, hook SessionStart avec -p --continue ; A/B 2.1.329) | 2.1.330 | PASS | reports/2026-11-21.md
 2026-11-21 | anthropic SDK Python (user_profile_id déplacé de l'en-tête vers le corps pour AnthropicBedrock sync/async ; A/B 2.11.0) | 2.12.0 | PASS | reports/2026-11-21.md
 2026-11-21 | fastmcp (outil OpenAPI sans paramètre de chemin requis : erreur de validation, user_id vide non bloqué ; A/B 4.2.2) | 4.2.3 | PASS | reports/2026-11-21.md
+2026-11-22 | fastmcp (code OAuth proxy échangé une seule fois sous concurrence : 10/10 → 1/10 avec store lent ; transformation inapplicable masque seulement son outil ; A/B 4.2.3) | 4.2.4 | PASS | reports/2026-11-22.md
+2026-11-22 | claude-agent-sdk TypeScript (avertissement settings_not_in_effect pour settings en ligne et fichier projet invalides ; chaîne JSON invalide : pas d'écart ; A/B 0.3.329) | 0.3.330 | PASS | reports/2026-11-22.md
+2026-11-22 | deepagents (edit_file sans lecture préalable OK, descriptions edit_file/execute corrigées, reducer messages LangGraph ; A/B 0.7.40) | 0.7.41 | PASS | reports/2026-11-22.md
