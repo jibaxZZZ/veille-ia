@@ -1,277 +1,325 @@
-# Veille IA — 2026-11-22
+# Veille IA — 2026-11-23
 
 ## TL;DR
 
-- **Run du 2026-11-22** (fenêtre du 2026-11-15 au 2026-11-22) : **8 éléments détectés, 3 testés (3 PASS), 5 au Radar.** Les 3 tests sont des A/B contre la version précédente, faits sans réseau ni vraie API.
-- **FastMCP 4.2.4 : PASS.** Faille reproduite en 4.2.3 : avec un store lent (simulation d'un Redis partagé), 10 échanges concurrents d'un même code OAuth donnent 10 jeux de jetons. En 4.2.4, un seul passe, les 9 autres reçoivent `invalid_grant`. Une transformation d'outil impossible ne casse plus tout le serveur : seul l'outil visé est masqué.
-- **Claude Agent SDK TS 0.3.330 : PASS.** Un fichier de réglages invalide déclenche maintenant l'avertissement `settings_not_in_effect`. En 0.3.329, le fichier était ignoré sans rien dire, règles de permission comprises. Une chaîne JSON invalide échoue dans les deux versions, sans écart observé.
-- **deepagents 0.7.41 : PASS.** Les descriptions d'outils sont corrigées. `edit_file` sans `read_file` préalable fonctionne dans les deux versions : l'ancienne mention « this tool errors otherwise » était bien fausse. Le reducer `messages` repris de LangGraph donne le même comportement avec `REMOVE_ALL_MESSAGES`.
+- **Run du 2026-11-23** (fenêtre du 2026-11-16 au 2026-11-23) : **7 éléments détectés, 3 testés (3 PASS), 4 au Radar.** Les 3 tests sont des A/B contre la version précédente, faits contre de faux serveurs locaux, sans vraie API.
+- **MCP Inspector 2.16.0 : PASS.** Correctif GHSA-3xgv-mvj6-g78r reproduit. Face à un serveur MCP qui envoie une ligne SSE sans fin, la mémoire de 2.15.0 suit le flux (351 Mio pour 200 Mio envoyés, 792 Mio pour 600 Mio, 869 Mio en transport `sse`). 2.16.0 coupe le flux et reste entre 142 et 189 Mio.
+- **langchain-anthropic 1.7.12 : PASS.** Avec 1.7.11, deux modèles partagent le client HTTP async. Dans une 2ᵉ boucle d'événements, la requête part sur une connexion morte : le serveur la reçoit **deux fois**, avec 0,43 s de délai. En 1.7.12 : un client par modèle, une seule requête. Les champs `finish_reason`/`normalized_finish_reason`/`finish_state` et la conservation de `caller` sont vérifiés.
+- **Claude Agent SDK Python 0.2.187 : PASS.** Seul changement : il embarque la CLI 2.1.330 au lieu de 2.1.329. Via `query()` derrière une passerelle plafonnée à 32 000 jetons de sortie, 0.2.186 échoue après 6 requêtes. 0.2.187 se rattrape en 2 requêtes (64000 → 32000).
 - Aucune tentative d'injection relevée. Pas de GPU, donc aucun test de performance.
 
 ## Contexte et choix faits sans validation humaine
 
-- Répertoire de travail : `/tmp/veille-work-2026-11-22/<élément>/`. Les commandes passent par le wrapper `bin/run <journal> "<commande>"`. Il consigne la commande, le code de sortie `[exit=…]` (celui du dernier maillon de la commande) et la sortie tronquée à 40 lignes. Les sorties ci-dessous viennent de ces journaux. Quand un pipe masque le code d'un programme, ce code est affiché à part (`python_exit=`, `node_exit=`).
-- Machine : Linux x86_64, Node v22.23.5 (`/opt/node22/bin`), npm, uv 0.11.32, Python 3.11.18. Pas de GPU.
-- **Isolation** : chaque test tourne sous `env -i`, avec un `HOME` placé dans le répertoire de travail. Aucune variable d'environnement de la machine n'est lue. Les secrets sont factices (`fausse-cle-test`, `faux-secret-test`, `cle-jwt-factice-de-test-…`). Le seul serveur est un faux `/v1/messages` local sur 127.0.0.1. Aucun modèle ni IdP réel n'a été appelé.
-- **Détection** : versions et dates viennent des registres officiels (`npm view <paquet> time --json`, API JSON de PyPI). Les notes viennent des changelogs bruts (raw.githubusercontent.com). L'API GitHub et github.com en `curl` ont été refusés par le proxy de la session (« GitHub access to this repository is not enabled »). Les releases Hermes ont donc été lues avec un outil de lecture web.
-- **Sélection** : j'ai retenu les 3 éléments testables sans clé et absents de `tested.md` à ces versions : correctif de sécurité OAuth sur les connecteurs MCP (sujets 3 et 4), garde-fou de réglages du SDK d'agent (sujets 1 et 3), harnais LangGraph (sujet 2). Claude Agent SDK TS 0.3.330 et deepagents 0.7.41 étaient déjà au Radar du 2026-11-21 sans test. Les témoins A/B sont FastMCP 4.2.3, Agent SDK TS 0.3.329 et deepagents 0.7.40. 4.2.3 et 0.7.40 figurent déjà dans `tested.md`. Aucun témoin n'est re-testé pour lui-même.
-- **Scripts** : copie exacte de tous les scripts de test et du wrapper dans [`reports/scripts-2026-11-22/`](scripts-2026-11-22/). Pour refaire un test, copie-les dans `/tmp/veille-work-2026-11-22/<élément>/scripts/` (et `bin/run`).
-- Claude Code n'a pas sorti de nouvelle version depuis 2.1.330 (npm, 2026-11-20T19:16:01Z), déjà testée hier.
+- Répertoire de travail : `/tmp/veille-work-2026-11-23/<élément>/`. Les commandes passent par le wrapper `bin/run <journal> "<commande>"`. Il consigne la commande, le code de sortie `[exit=…]` (celui du dernier maillon) et la sortie tronquée à 40 lignes. Les sorties ci-dessous viennent de ces journaux. Quand un script masque le code d'un programme, ce code est affiché à part (`cli_exit=`, `python_exit=`).
+- Machine : Linux x86_64, Node v22.23.5 (`/opt/node22/bin`), npm, uv 0.11.32, Python 3.11. Pas de GPU.
+- **Isolation** : chaque test tourne sous `env -i`, avec un `HOME` placé dans le répertoire de travail. Aucune variable d'environnement de la machine n'est lue. La seule clé est factice (`fausse-cle-test`). Les seuls serveurs sont de faux serveurs sur 127.0.0.1. Aucun modèle réel n'a été appelé. Les `npm install` tournent hors `env -i` : sous `env -i`, ils échouent avec `SELF_SIGNED_CERT_IN_CHAIN`, car le certificat du proxy de la session n'est plus pris en compte.
+- **Détection** : versions et dates viennent des registres officiels (`npm view <paquet> time --json`, API JSON de PyPI). Les notes viennent des pages de release GitHub (lues avec un outil de lecture web) et des changelogs bruts. L'API GitHub a répondu 403 depuis le shell.
+- **Sélection** : j'ai retenu les 3 éléments testables sans clé et absents de `tested.md` à ces versions. Ce sont un correctif de sécurité MCP (sujets 3 et 4), le client Anthropic de LangChain/LangGraph (sujet 2) et le SDK d'agent Python (sujet 1). Les trois étaient au Radar du 2026-11-22 sans test. Les témoins A/B sont Inspector 2.15.0 (déjà dans `tested.md`, utilisé ici seulement comme témoin), langchain-anthropic 1.7.11 et Agent SDK Python 0.2.186.
+- **Scripts** : copie exacte de tous les scripts et du wrapper dans [`reports/scripts-2026-11-23/`](scripts-2026-11-23/). Pour refaire un test, copie-les dans `/tmp/veille-work-2026-11-23/<élément>/scripts/` (et `bin/run`). Les chemins sont écrits en dur.
+- Claude Code n'a pas sorti de version depuis 2.1.330 (npm, 2026-11-20T19:16:01Z, testée le 2026-11-21). L'Agent SDK TypeScript n'a pas sorti de version depuis 0.3.330 (testée le 2026-11-22).
 
 ---
 
 ## Tests
 
-### 1. FastMCP 4.2.4 — code OAuth échangé une seule fois sous concurrence, transformation d'outil inapplicable
+### 1. MCP Inspector 2.16.0 — plafond de taille des lignes et événements SSE (GHSA-3xgv-mvj6-g78r)
 
-- **Sujet** : 3 (harnais : permissions, reprise sur erreur) et 4 (MCP et connecteurs). **Ce que ça change pour moi** : un serveur MCP derrière `OAuthProxy` avec plusieurs réplicas ou un store réseau pouvait émettre plusieurs jeux de jetons pour un même code : il faut mettre à jour. Une transformation d'outil mal configurée ne coupe plus tout le serveur. **Effort** : ~10 min (montée de version et relance des tests).
-- **Source** : https://gofastmcp.com/changelog (source brute : https://github.com/PrefectHQ/fastmcp/blob/main/docs/changelog.mdx), entrée `v4.2.4` datée du 2026-11-20 ; release https://github.com/PrefectHQ/fastmcp/releases/tag/v4.2.4. Extrait : « Fixes a race where two concurrent token requests could redeem one OAuth proxy authorization code or refresh token twice (GHSA-78c8-3jhx-5mg7) […] a tool transform that can't apply now hides only its own tool instead of breaking every listing ». Date vérifiée sur PyPI (https://pypi.org/project/fastmcp/4.2.4/) : 2026-11-21T05:29:54Z (4.2.3 : 2026-11-20T04:17:11Z).
-- **Prérequis** : `uv venv -p 3.11 venv-<v> && uv pip install -p venv-<v>/bin/python fastmcp==<v>` pour 4.2.3 et 4.2.4 (code de sortie 0 pour les deux). Scripts écrits pour le test, dans `fastmcp/scripts/` :
-  - `oauth_race.py <N> <memory|slow>` crée un `OAuthProxy` avec des endpoints amont factices (127.0.0.1:9, jamais appelés), un `StaticTokenVerifier`, une clé JWT factice et `require_authorization_consent=False`, puis appelle `get_routes()`. Il enregistre un client et dépose dans `_code_store` un `ClientCode` « CODE1 », comme le fait le callback IdP. Il lance ensuite N `exchange_authorization_code` en parallèle (`asyncio.gather`), puis un rejeu séquentiel. `slow` = `MemoryStore` avec 10 ms de latence sur `get` et `delete`, pour simuler un store réseau partagé.
-  - `transform_test.py` déclare deux outils, `envoyer(destinataire, sujet)` et `ping()`. Il ajoute `ToolTransform({"envoyer": ToolTransformConfig(name="envoyer_mail", arguments={"sujet": ArgTransformConfig(hide=True)})})` : masquer un argument requis sans défaut est impossible. Il fait ensuite `list_tools` et appelle les 3 noms via `Client(mcp)` en mémoire.
+- **Sujet** : 3 (harnais, sandboxes) et 4 (MCP). **Ce que ça change pour moi** : brancher l'Inspector sur un serveur MCP non fiable pouvait faire grossir sa mémoire sans limite, jusqu'au crash. En 2.16.0, le flux est coupé à 16 Mio. **Effort** : ~5 min (`npx @modelcontextprotocol/inspector@2.16.0`).
+- **Source** : release https://github.com/modelcontextprotocol/inspector/releases/tag/2.16.0, publiée le 18 nov. (heure 09:08, année non affichée). Extraits : « Cap SSE line and event size on every SDK transport stream (GHSA-3xgv-mvj6-g78r) (#2997) » et « fix(core): cap SSE line length and event size on every SDK transport stream (v2) (#2993) ». Avis : https://github.com/modelcontextprotocol/inspector/security/advisories/GHSA-3xgv-mvj6-g78r, publié le 18 nov. 2026, sévérité modérée (CVSS 6.5), versions touchées >= 2.7.0 et <= 2.15.0, corrigé en 2.16.0. Date vérifiée sur npm (https://www.npmjs.com/package/@modelcontextprotocol/inspector) : 2.16.0 le 2026-11-18T09:32:25Z (2.15.0 : 2026-11-12T01:24:25Z).
+- **Prérequis** : `npm install --prefix v<v> --no-audit --no-fund @modelcontextprotocol/inspector@<v>` pour 2.15.0 et 2.16.0 (`[exit=0]`, « added 120 packages » pour chacune). Dans le paquet 2.16.0, `clients/cli/build/index.js` contient `SSE_MAX_LINE_BYTES = 16777216` et `createSseLineCapStream`. Aucune de ces deux chaînes n'apparaît en 2.15.0. Scripts dans `inspector/scripts/` :
+  - `evil_mcp.py <port> <Mio> <log>` : faux serveur MCP sur `/<mode>/mcp`. `ok` répond normalement en SSE, avec un outil dont la description fait 1 Mio. `giant` répond à `initialize` par une ligne `data:` de <Mio> Mio sans fin de ligne. `bigevent` envoie <Mio> Mio de lignes `data:` courtes, sans ligne vide finale. `giantsse` (GET `/giantsse/sse`, transport `sse` historique, le cas de l'avis) envoie l'événement `endpoint`, puis une ligne `data:` sans fin.
+  - `case.sh <v> <mode>` (variables optionnelles `T=<transport>`, `EP=<chemin>`) : lance `mcp-inspector --cli --transport ${T:-http} --server-url http://127.0.0.1:18921/<mode>/${EP:-mcp} --method tools/list` sous `env -i` et `timeout 120`, via `measure.py`. `measure.py` affiche la RSS max du processus enfant (`rss_max_kio`, en Kio) et la durée. Le script affiche ensuite le journal du faux serveur.
 
-**a) Quickstart : un échange de code, store mémoire** (`[exit=0]` pour les deux versions) :
-
-```
-$ cd /tmp/veille-work-2026-11-22/fastmcp && env -i PATH=/usr/bin:/bin HOME=/tmp/veille-work-2026-11-22/fastmcp timeout 120 venv-4.2.3/bin/python -I scripts/oauth_race.py 2 memory
-[exit=0]
-fastmcp 4.2.3 | store: memory | redemptions concurrentes: 2
-  #0: jetons émis (access_token len=331, refresh=True)
-  #1: ERREUR TokenError invalid_grant Authorization code not found
-jeux de jetons émis: 1 / 2
-rejeu séquentiel: ERREUR TokenError invalid_grant Authorization code not found
-```
-
-4.2.4 donne une sortie identique avec `store: memory`. Avec le store mémoire, les deux appels ne s'entrelacent pas : la course n'apparaît pas.
-
-**b) Course réelle : store lent, 2 puis 10 échanges concurrents** :
+**a) Quickstart : `tools/list` sur un serveur sain** (réponse SSE avec une ligne de 1 Mio, sous le plafond). Serveur lancé avec `python3 -I scripts/evil_mcp.py 18921 200 logs/evil.log` :
 
 ```
-$ cd /tmp/veille-work-2026-11-22/fastmcp && env -i PATH=/usr/bin:/bin HOME=/tmp/veille-work-2026-11-22/fastmcp timeout 120 venv-4.2.3/bin/python -I scripts/oauth_race.py 2 slow
+$ /tmp/veille-work-2026-11-23/inspector/scripts/case.sh 2.15.0 ok
 [exit=0]
-fastmcp 4.2.3 | store: slow | redemptions concurrentes: 2
-  #0: jetons émis (access_token len=331, refresh=True)
-  #1: jetons émis (access_token len=331, refresh=True)
-jeux de jetons émis: 2 / 2
-rejeu séquentiel: ERREUR TokenError invalid_grant Authorization code not found
+cli_exit=0
+{
+  "tools": [
+    {
+      "name": "echo",
+      "description": "xxxxxxxx… (1 Mio, coupé ici)
+rss_max_kio=117576 duree_s=0.4
+--- journal du faux serveur
+POST /ok/mcp method=initialize
+POST /ok/mcp method=notifications/initialized
+POST /ok/mcp method=tools/list
 
-$ cd /tmp/veille-work-2026-11-22/fastmcp && env -i PATH=/usr/bin:/bin HOME=/tmp/veille-work-2026-11-22/fastmcp timeout 120 venv-4.2.4/bin/python -I scripts/oauth_race.py 2 slow
+$ /tmp/veille-work-2026-11-23/inspector/scripts/case.sh 2.16.0 ok
 [exit=0]
-fastmcp 4.2.4 | store: slow | redemptions concurrentes: 2
-  #0: jetons émis (access_token len=331, refresh=True)
-  #1: ERREUR TokenError invalid_grant Authorization code already used
-jeux de jetons émis: 1 / 2
-rejeu séquentiel: ERREUR TokenError invalid_grant Authorization code not found
-
-$ cd /tmp/veille-work-2026-11-22/fastmcp && env -i PATH=/usr/bin:/bin HOME=/tmp/veille-work-2026-11-22/fastmcp timeout 120 venv-4.2.3/bin/python -I scripts/oauth_race.py 10 slow | grep -v '  #'
-[exit=0]
-fastmcp 4.2.3 | store: slow | redemptions concurrentes: 10
-jeux de jetons émis: 10 / 10
-rejeu séquentiel: ERREUR TokenError invalid_grant Authorization code not found
-
-$ cd /tmp/veille-work-2026-11-22/fastmcp && env -i PATH=/usr/bin:/bin HOME=/tmp/veille-work-2026-11-22/fastmcp timeout 120 venv-4.2.4/bin/python -I scripts/oauth_race.py 10 slow | grep -v '  #'
-[exit=0]
-fastmcp 4.2.4 | store: slow | redemptions concurrentes: 10
-jeux de jetons émis: 1 / 10
-rejeu séquentiel: ERREUR TokenError invalid_grant Authorization code not found
+cli_exit=0
+{
+  "tools": [
+    {
+      "name": "echo",
+      "description": "xxxxxxxx… (1 Mio, coupé ici)
+rss_max_kio=120040 duree_s=0.3
+--- journal du faux serveur
+POST /ok/mcp method=initialize
+POST /ok/mcp method=notifications/initialized
+POST /ok/mcp method=tools/list
 ```
 
-**c) Transformation d'outil inapplicable** (stderr redirigé vers `logs/transform-stderr-<v>.txt`) :
+**b) Ligne SSE sans fin puis événement géant, transport Streamable HTTP, 200 Mio** (lignes de sortie coupées à 200 caractères ; la ligne `rss_max_kio` est affichée deux fois par `case.sh`, une seule copie est gardée) :
 
 ```
-$ cd /tmp/veille-work-2026-11-22/fastmcp && env -i PATH=/usr/bin:/bin HOME=/tmp/veille-work-2026-11-22/fastmcp COLUMNS=200 timeout 120 venv-4.2.3/bin/python -I scripts/transform_test.py 2>logs/transform-stderr-4.2.3.txt; rc=$?; echo python_exit=$rc; grep -c Traceback logs/transform-stderr-4.2.3.txt | sed 's/^/tracebacks_stderr=/'; grep -E 'ValueError|cannot apply' logs/transform-stderr-4.2.3.txt | head -3
+$ /tmp/veille-work-2026-11-23/inspector/scripts/case.sh 2.15.0 giant
 [exit=0]
-fastmcp 4.2.3
-list_tools ERREUR -> MCPError Internal server error
-call ping ERREUR -> MCPError Internal server error
-call envoyer_mail ERREUR -> MCPError Internal server error
-call envoyer ERREUR -> MCPError Internal server error
-python_exit=0
-tracebacks_stderr=4
-    raise ValueError(
-ValueError: Hidden parameter 'sujet' has no default value in parent tool and no default or default_factory provided in ArgTransform. Either provide a default or default_factory in ArgTransform or don't hide required parameters.
-    raise ValueError(
+cli_exit=4
+{"error":{"code":"unreachable","message":"Connection timed out after 15000 ms. To accommodate a slower server, pass a larger --connect-timeout <ms>, or set connectionTimeout on the server's catalog or
+rss_max_kio=351496 duree_s=15.3
+--- journal du faux serveur
+POST /giant/mcp method=initialize
+giant: 200 Mio envoyés sans fin de ligne
 
-$ cd /tmp/veille-work-2026-11-22/fastmcp && env -i PATH=/usr/bin:/bin HOME=/tmp/veille-work-2026-11-22/fastmcp COLUMNS=200 timeout 120 venv-4.2.4/bin/python -I scripts/transform_test.py 2>logs/transform-stderr-4.2.4.txt; rc=$?; echo python_exit=$rc; grep -c Traceback logs/transform-stderr-4.2.4.txt | sed 's/^/tracebacks_stderr=/'; grep -E 'ValueError|cannot apply' logs/transform-stderr-4.2.4.txt | head -3
+$ /tmp/veille-work-2026-11-23/inspector/scripts/case.sh 2.16.0 giant
 [exit=0]
-fastmcp 4.2.4
-list_tools -> ['ping']
-call ping -> is_error=False pong
-call envoyer_mail -> is_error=True Unknown tool: 'envoyer_mail'
-call envoyer -> is_error=True Unknown tool: 'envoyer'
-python_exit=0
-tracebacks_stderr=0
-[11/22/26 02:10:19] ERROR    Tool transform for 'envoyer' cannot apply, so the tool is hidden: Hidden parameter 'sujet' has no default value in parent tool and no default or       tool_transform.py:95
+cli_exit=4
+{"error":{"code":"unreachable","message":"Connection timed out after 15000 ms. …
+rss_max_kio=142512 duree_s=15.3
+--- journal du faux serveur
+POST /giant/mcp method=initialize
+giant: client a fermé la connexion (ConnectionResetError)
+
+$ /tmp/veille-work-2026-11-23/inspector/scripts/case.sh 2.15.0 bigevent
+[exit=0]
+cli_exit=4
+{"error":{"code":"unreachable","message":"Connection timed out after 15000 ms. …
+rss_max_kio=443536 duree_s=15.3
+--- journal du faux serveur
+POST /bigevent/mcp method=initialize
+bigevent: 200 Mio en lignes courtes sans ligne vide
+
+$ /tmp/veille-work-2026-11-23/inspector/scripts/case.sh 2.16.0 bigevent
+[exit=0]
+cli_exit=4
+{"error":{"code":"unreachable","message":"Connection timed out after 15000 ms. …
+rss_max_kio=141992 duree_s=15.3
+--- journal du faux serveur
+POST /bigevent/mcp method=initialize
+bigevent: client a fermé la connexion (ConnectionResetError)
+```
+
+**c) Croissance avec la taille du flux : serveur relancé avec 600 Mio**, puis le cas de l'avis (transport `sse`, flux GET) :
+
+```
+$ /tmp/veille-work-2026-11-23/inspector/scripts/case.sh 2.15.0 giant
+[exit=0]
+cli_exit=4
+{"error":{"code":"unreachable","message":"Connection timed out after 15000 ms. …
+rss_max_kio=792408 duree_s=15.3
+--- journal du faux serveur
+POST /giant/mcp method=initialize
+giant: 600 Mio envoyés sans fin de ligne
+
+$ /tmp/veille-work-2026-11-23/inspector/scripts/case.sh 2.16.0 giant
+[exit=0]
+cli_exit=4
+{"error":{"code":"unreachable","message":"Connection timed out after 15000 ms. …
+rss_max_kio=141980 duree_s=15.3
+--- journal du faux serveur
+POST /giant/mcp method=initialize
+giant: client a fermé la connexion (ConnectionResetError)
+
+$ T=sse EP=sse /tmp/veille-work-2026-11-23/inspector/scripts/case.sh 2.15.0 giantsse
+[exit=0]
+cli_exit=4
+{"error":{"code":"unreachable","message":"Connection timed out after 15000 ms. …
+rss_max_kio=868916 duree_s=15.4
+--- journal du faux serveur
+GET /giantsse/sse
+POST /giantsse/messages method=initialize
+giantsse: client a fermé la connexion (ConnectionResetError)
+
+$ T=sse EP=sse /tmp/veille-work-2026-11-23/inspector/scripts/case.sh 2.16.0 giantsse
+[exit=0]
+cli_exit=4
+{"error":{"code":"unreachable","message":"Connection timed out after 15000 ms. …
+rss_max_kio=189244 duree_s=15.3
+--- journal du faux serveur
+GET /giantsse/sse
+POST /giantsse/messages method=initialize
+giantsse: client a fermé la connexion (ConnectionResetError)
+GET /giantsse/sse
+giantsse: client a fermé la connexion (ConnectionResetError)
+GET /giantsse/sse
+giantsse: client a fermé la connexion (ConnectionResetError)
+GET /giantsse/sse
+giantsse: client a fermé la connexion (ConnectionResetError)
+GET /giantsse/sse
+giantsse: client a fermé la connexion (ConnectionResetError)
 ```
 
 | Affirmation de la doc | Étiquette | Observation |
 |---|---|---|
-| Deux requêtes concurrentes ne peuvent plus échanger deux fois un même code d'autorisation du proxy | `VÉRIFIÉ` | 4.2.3 : 2/2 puis 10/10 jeux de jetons émis ; 4.2.4 : 1/2 puis 1/10, les autres reçoivent `invalid_grant` « Authorization code already used » |
-| Idem pour un refresh token | `NON VÉRIFIÉ` | Pas testé : il faut un faux IdP pour le refresh amont. Le diff du paquet montre le même `delete()` conditionnel dans `exchange_refresh_token` |
-| Un jeton d'accès révoqué reste révoqué après un refresh (#6620) | `NON VÉRIFIÉ` | Pas testé (même raison) |
-| Une transformation inapplicable masque seulement son outil, au lieu de casser toutes les listes | `VÉRIFIÉ` | 4.2.3 : `list_tools` et même `ping` renvoient `Internal server error`. 4.2.4 : `ping` répond, `envoyer` et `envoyer_mail` sont masqués, l'erreur n'est journalisée qu'une fois |
+| La taille des lignes SSE est plafonnée sur les flux des transports | `VÉRIFIÉ` | 2.15.0 : RSS 351 Mio (200 Mio envoyés), 792 Mio (600 Mio), 869 Mio (`sse`, 600 Mio). 2.16.0 : 142 à 189 Mio, le client coupe la connexion avant la fin du flux |
+| La taille des événements SSE est plafonnée | `VÉRIFIÉ` | `bigevent` : 2.15.0 lit les 200 Mio (RSS 444 Mio) ; 2.16.0 coupe (RSS 142 Mio) |
+| Le cas de l'avis (transport `sse`, flux GET de longue durée) est corrigé | `VÉRIFIÉ` pour la CLI | Testé avec la CLI, qui partage le module `core`. Le backend du mode web (`watchLongLivedStream`), cité par l'avis, n'est pas lancé : `NON VÉRIFIÉ` pour le web |
+| Le message `SseLineTooLongError` explique la coupure (texte présent dans le paquet) | `NON VÉRIFIÉ` | Non affiché par la CLI : dans les deux versions, elle répond seulement `Connection timed out after 15000 ms` (`cli_exit=4`). En `sse`, 2.16.0 se reconnecte 4 fois avant le délai |
 
-**Verdict : `PASS`** — les deux correctifs testés sont observés, et la faille de 4.2.3 a été reproduite.
+**Verdict : `PASS`** — la consommation mémoire non bornée est reproduite en 2.15.0 et disparaît en 2.16.0, sur les 3 chemins testés. Un défaut reste : l'erreur affichée (« timeout ») ne dit pas pourquoi le flux a été coupé.
 
 ---
 
-### 2. Claude Agent SDK TypeScript 0.3.330 — avertissement `settings_not_in_effect`, chaîne `settings` invalide
+### 2. langchain-anthropic 1.7.12 — client HTTP async par modèle, `finish_reason` normalisé, `caller` conservé
 
-- **Sujet** : 1 (Agent SDK) et 3 (garde-fous). **Ce que ça change pour moi** : un `.claude/settings.json` invalide (une faute dans `defaultMode`, par exemple) désactive tout le fichier, règles `deny` et hooks compris. Depuis 0.3.330, on peut le détecter en filtrant `system/informational` + `tag === "settings_not_in_effect"` pour stopper l'agent au lieu de tourner sans garde-fous. **Effort** : ~30 min (montée de version et ajout du filtre dans la boucle `query()`).
-- **Source** : https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md, section `## 0.3.330`, lue en brut le 2026-11-22. Extraits : « Added a `system/informational` warning, tagged `settings_not_in_effect`, when `settings` or a user, project or local settings file fails validation and is not in effect » ; « Changed the TypeScript SDK's `query()` to fail with an error when `settings` is a JSON string that doesn't parse ». Date vérifiée sur npm (https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk) : 0.3.330 le 2026-11-20T19:18:50Z, 0.3.329 le 2026-11-19T18:42:14Z.
-- **Prérequis** : `npm install --prefix v<v> @anthropic-ai/claude-agent-sdk@<v>` pour 0.3.329 et 0.3.330 (code de sortie 0 ; le binaire `claude-agent-sdk-linux-x64` est installé par le paquet). Scripts dans `agent-sdk-ts/scripts/` :
-  - `mock_api.py <port> <log>` : faux `/v1/messages` en SSE, qui répond toujours `FIN-DU-MOCK`.
-  - `settings_test.mjs <dossier SDK> <cas>` : appelle `query({prompt:'dis bonjour', options:{model:'claude-opus-4-8', maxTurns:1, cwd, settingSources:['project'], settings}})`. Il affiche les messages `system` hors `init`, la réponse et le résultat, ou l'exception. Cas : `ok` = `{permissions:{allow:[]}}` ; `badfield` = objet `{permissions:{defaultMode:'pas-un-mode'}}` ; `badfile` = pas de `settings`, mais `.claude/settings.json` du projet contient `{"permissions": {"defaultMode": "pas-un-mode"}}` ; `badjson` = chaîne `'{"permissions": {"allow": ['` ; `str:<texte>` = chaîne libre.
-  - `case.sh <v> <port> <cas>` : démarre le faux serveur, puis lance le script sous `env -i` avec `ANTHROPIC_BASE_URL=http://127.0.0.1:<port>`, `ANTHROPIC_API_KEY=fausse-cle-test` et `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`. Il compte enfin les requêtes reçues.
+- **Sujet** : 2 (LangGraph, fournisseurs de modèles) et 3 (reprise sur erreur). **Ce que ça change pour moi** : un service qui crée des `ChatAnthropic` dans des boucles d'événements successives (workers, tests, `asyncio.run` répétés) renvoyait silencieusement une requête : double envoi, donc double facturation possible, plus un délai. Les nouveaux champs `normalized_finish_reason`/`finish_state` permettent de détecter `max_tokens` et `pause_turn` sans code propre à Anthropic. **Effort** : ~10 min (montée de version) ; ~30 min pour brancher `finish_state == "suspended"` dans un graphe.
+- **Source** : release https://github.com/langchain-ai/langchain/releases/tag/langchain-anthropic%3D%3D1.7.12, publiée le 19 nov. à 23:00 (année non affichée). Extraits : « fix(anthropic): don't share the async HTTP client between models (#41946) » ; « fix(anthropic): preserve `caller` on `tool_search_tool_result` blocks (#41958) » ; « feat(core): standardize finish reason on message-finish events (#41926) ». Date vérifiée sur PyPI (https://pypi.org/project/langchain-anthropic/1.7.12/) : 2026-11-19T23:00:06Z (1.7.11 : 2026-11-18T15:20:04Z).
+- **Prérequis** : `uv venv -q -p 3.11 venv-<v> && uv pip install -q -p venv-<v>/bin/python langchain-anthropic==<v>` (`[exit=0]` ; sortie : `1.7.11 2.12.0 1.8.4` et `1.7.12 2.12.0 1.8.4`, soit langchain-anthropic, anthropic, langchain-core). Le diff des deux paquets confirme : `@lru_cache` est retiré de `_get_default_async_httpx_client`, `_finish_reason_fields` est ajouté, et le filtre `caller` porte sur les blocs `tool_search_tool_result`. Scripts dans `lc-anthropic/scripts/` :
+  - `mock_api.py <port> <log>` : faux `/v1/messages` HTTP/1.1 keep-alive, en JSON ou SSE. Le `stop_reason` est lu dans le message utilisateur (`STOP=<raison>`). Il consigne le port client de chaque requête.
+  - `lc_test.py <port> <cas>` : `ChatAnthropic(model="claude-opus-4-8", api_key="fausse-cle-test", base_url=http://127.0.0.1:<port>, max_retries=2)`. Cas : `finish` (`invoke`), `stream`, `loops` (modèles `a` et `b` dans deux `asyncio.run` successifs), `caller` (appel direct de `_format_messages`).
+- Serveur lancé avec `python3 -I scripts/mock_api.py 18911 logs/mock.log`.
 
-**a) Quickstart (cas `ok`)** :
-
-```
-$ /tmp/veille-work-2026-11-22/agent-sdk-ts/scripts/case.sh 0.3.330 18900 ok
-[exit=0]
-claude-agent-sdk 0.3.330 | cas: ok
-assistant: FIN-DU-MOCK
-result: success "FIN-DU-MOCK"
-fin normale en 469 ms
-node_exit=0
-requêtes au faux serveur: 1
-```
-
-**b) Réglages invalides, A/B** :
+**a) Quickstart `invoke`, champs de fin** :
 
 ```
-$ /tmp/veille-work-2026-11-22/agent-sdk-ts/scripts/case.sh 0.3.329 18904 badfield
+$ cd /tmp/veille-work-2026-11-23/lc-anthropic && env -i PATH=/usr/bin:/bin HOME=/tmp/veille-work-2026-11-23/lc-anthropic timeout 120 venv-1.7.11/bin/python -I scripts/lc_test.py 18911 finish
 [exit=0]
-claude-agent-sdk 0.3.329 | cas: badfield
-assistant: FIN-DU-MOCK
-result: success "FIN-DU-MOCK"
-fin normale en 440 ms
-node_exit=0
-requêtes au faux serveur: 1
+langchain-anthropic 1.7.11 | cas: finish
+invoke STOP=end_turn                        -> {'stop_reason': 'end_turn', 'finish_reason': None, 'normalized_finish_reason': None, 'finish_state': None}
+invoke STOP=max_tokens                      -> {'stop_reason': 'max_tokens', 'finish_reason': None, 'normalized_finish_reason': None, 'finish_state': None}
+(… mêmes valeurs None pour tool_use, pause_turn, refusal, model_context_window_exceeded, inconnu_xyz)
 
-$ /tmp/veille-work-2026-11-22/agent-sdk-ts/scripts/case.sh 0.3.330 18905 badfield
+$ cd /tmp/veille-work-2026-11-23/lc-anthropic && env -i PATH=/usr/bin:/bin HOME=/tmp/veille-work-2026-11-23/lc-anthropic timeout 120 venv-1.7.12/bin/python -I scripts/lc_test.py 18911 finish
 [exit=0]
-claude-agent-sdk 0.3.330 | cas: badfield
-system/informational {"type":"system","subtype":"informational","tag":"settings_not_in_effect","content":"These settings did not load, so nothing in them is in effect, including hooks, permission rules and sandbox settings, though environment variables they already set can stay:\n  --settings (inline JSON) (permissions.
-assistant: FIN-DU-MOCK
-result: success "FIN-DU-MOCK"
-fin normale en 451 ms
-node_exit=0
-requêtes au faux serveur: 1
-
-$ /tmp/veille-work-2026-11-22/agent-sdk-ts/scripts/case.sh 0.3.329 18906 badfile
-[exit=0]
-claude-agent-sdk 0.3.329 | cas: badfile
-assistant: FIN-DU-MOCK
-result: success "FIN-DU-MOCK"
-fin normale en 456 ms
-node_exit=0
-requêtes au faux serveur: 1
-
-$ FULL=1 /tmp/veille-work-2026-11-22/agent-sdk-ts/scripts/case.sh 0.3.330 18930 badfile | grep informational | python3 -c 'import sys,json; l=sys.stdin.read(); d=json.loads(l[l.index("{"):]); print(d["tag"]); print(d["content"])'
-[exit=0]
-settings_not_in_effect
-These settings did not load, so nothing in them is in effect, including hooks, permission rules and sandbox settings, though environment variables they already set can stay:
-  /tmp/veille-work-2026-11-22/agent-sdk-ts/proj-badfile-0.3.330/.claude/settings.json (permissions.defaultMode): Invalid value. Expected one of: "acceptEdits", "auto", "bypassPermissions", "default", "dontAsk", "plan"
-Fix each problem listed, then start Claude Code again. For settings sent with applyFlagSettings, shown as SDK inline settings, send them again instead.
+langchain-anthropic 1.7.12 | cas: finish
+invoke STOP=end_turn                        -> {'stop_reason': 'end_turn', 'finish_reason': 'end_turn', 'normalized_finish_reason': 'stop', 'finish_state': 'complete'}
+invoke STOP=max_tokens                      -> {'stop_reason': 'max_tokens', 'finish_reason': 'max_tokens', 'normalized_finish_reason': 'length', 'finish_state': 'complete'}
+invoke STOP=tool_use                        -> {'stop_reason': 'tool_use', 'finish_reason': 'tool_use', 'normalized_finish_reason': 'tool_call', 'finish_state': 'complete'}
+invoke STOP=pause_turn                      -> {'stop_reason': 'pause_turn', 'finish_reason': 'pause_turn', 'normalized_finish_reason': 'other', 'finish_state': 'suspended'}
+invoke STOP=refusal                         -> {'stop_reason': 'refusal', 'finish_reason': 'refusal', 'normalized_finish_reason': 'refusal', 'finish_state': 'complete'}
+invoke STOP=model_context_window_exceeded   -> {'stop_reason': 'model_context_window_exceeded', 'finish_reason': 'model_context_window_exceeded', 'normalized_finish_reason': 'context_exceeded', 'finish_state': 'complete'}
+invoke STOP=inconnu_xyz                     -> {'stop_reason': 'inconnu_xyz', 'finish_reason': 'inconnu_xyz', 'normalized_finish_reason': 'other', 'finish_state': 'complete'}
 ```
 
-Avec `case.sh 0.3.330 18907 badfile` sans `FULL` (`[exit=0]`), on obtient le même message tronqué, suivi de `result: success` et `node_exit=0`.
+En `stream` (même commande, cas `stream`, `[exit=0]`), 1.7.11 donne `None` pour les 3 champs. 1.7.12 donne `end_turn → stop/complete`, `max_tokens → length/complete` et `pause_turn → other/suspended`.
 
-**c) Cas limite : `settings` passé en chaîne JSON** (mêmes sorties en 0.3.329 et 0.3.330, au numéro de version près ; journal complet dans `logs/settings.log`) :
+**b) Deux modèles dans deux boucles d'événements successives** (journal du faux serveur vidé avant chaque version) :
 
 ```
-$ /tmp/veille-work-2026-11-22/agent-sdk-ts/scripts/case.sh 0.3.330 18903 badjson
+$ cd /tmp/veille-work-2026-11-23/lc-anthropic && env -i PATH=/usr/bin:/bin HOME=/tmp/veille-work-2026-11-23/lc-anthropic timeout 120 venv-1.7.11/bin/python -I scripts/lc_test.py 18911 loops; echo "requêtes reçues par le faux serveur:"; cat logs/mock.log
 [exit=0]
-claude-agent-sdk 0.3.330 | cas: badjson
-EXCEPTION: Error Claude Code process exited with code 1. stderr: Error: Settings file not found: /tmp/veille-work-2026-11-22/agent-sdk-ts/proj-badjson-0.3.330/{"permissions": {"allow": [ | après 133 ms
-node_exit=0
-requêtes au faux serveur: 0
+langchain-anthropic 1.7.11 | cas: loops
+même client httpx async pour 2 modèles : True
+boucle 1 (modèle a): FIN-DU-MOCK en 0.06 s
+boucle 2 (modèle b): FIN-DU-MOCK en 0.43 s
+requêtes reçues par le faux serveur:
+POST /v1/messages client_port=59914 stream=None stop=end_turn
+POST /v1/messages client_port=59914 stream=None stop=end_turn
+POST /v1/messages client_port=59920 stream=None stop=end_turn
 
-$ /tmp/veille-work-2026-11-22/agent-sdk-ts/scripts/case.sh 0.3.330 18924 'str:{bad}'
+$ cd /tmp/veille-work-2026-11-23/lc-anthropic && env -i PATH=/usr/bin:/bin HOME=/tmp/veille-work-2026-11-23/lc-anthropic timeout 120 venv-1.7.12/bin/python -I scripts/lc_test.py 18911 loops; echo "requêtes reçues par le faux serveur:"; cat logs/mock.log
 [exit=0]
-claude-agent-sdk 0.3.330 | cas: str:{bad}
-EXCEPTION: Error Claude Code process exited with code 1. stderr: Error: Invalid JSON provided to --settings | après 141 ms
-node_exit=0
-requêtes au faux serveur: 0
+langchain-anthropic 1.7.12 | cas: loops
+même client httpx async pour 2 modèles : False
+boucle 1 (modèle a): FIN-DU-MOCK en 0.06 s
+boucle 2 (modèle b): FIN-DU-MOCK en 0.00 s
+requêtes reçues par le faux serveur:
+POST /v1/messages client_port=59936 stream=None stop=end_turn
+POST /v1/messages client_port=59942 stream=None stop=end_turn
+```
 
-$ /tmp/veille-work-2026-11-22/agent-sdk-ts/scripts/case.sh 0.3.330 18922 'str:{"permissions":{"allow":[]}}'
+En 1.7.11, la 2ᵉ requête part sur la connexion ouverte dans la 1ʳᵉ boucle (même port 59914). Le serveur la reçoit et répond, mais le client ne peut pas lire la réponse et renvoie la requête sur une nouvelle connexion (port 59920).
+
+**c) `caller` sur `tool_search_tool_result`** (premier lancement : `[exit=1]` pour les deux versions, `TypeError: _format_messages() missing 1 required keyword-only argument: 'model'`. C'était une erreur de mon script, corrigée en ajoutant `model="claude-opus-4-8"`, puis relancée) :
+
+```
+$ cd /tmp/veille-work-2026-11-23/lc-anthropic && env -i PATH=/usr/bin:/bin HOME=/tmp/veille-work-2026-11-23/lc-anthropic timeout 120 venv-1.7.11/bin/python -I scripts/lc_test.py 18911 caller
 [exit=0]
-claude-agent-sdk 0.3.330 | cas: str:{"permissions":{"allow":[]}}
-assistant: FIN-DU-MOCK
-result: success "FIN-DU-MOCK"
-fin normale en 373 ms
-node_exit=0
-requêtes au faux serveur: 1
+langchain-anthropic 1.7.11 | cas: caller
+caller entrée={'type': 'code_execution_20250825', 'tool_id': 'srvtoolu_x'} -> clés sorties=['content', 'tool_use_id', 'type'] caller=None
+caller entrée={'type': 'direct'} -> clés sorties=['content', 'tool_use_id', 'type'] caller=None
+caller entrée=None -> clés sorties=['content', 'tool_use_id', 'type'] caller=None
+
+$ cd /tmp/veille-work-2026-11-23/lc-anthropic && env -i PATH=/usr/bin:/bin HOME=/tmp/veille-work-2026-11-23/lc-anthropic timeout 120 venv-1.7.12/bin/python -I scripts/lc_test.py 18911 caller
+[exit=0]
+langchain-anthropic 1.7.12 | cas: caller
+caller entrée={'type': 'code_execution_20250825', 'tool_id': 'srvtoolu_x'} -> clés sorties=['caller', 'content', 'tool_use_id', 'type'] caller={'type': 'code_execution_20250825', 'tool_id': 'srvtoolu_x'}
+caller entrée={'type': 'direct'} -> clés sorties=['content', 'tool_use_id', 'type'] caller=None
+caller entrée=None -> clés sorties=['content', 'tool_use_id', 'type'] caller=None
 ```
 
 | Affirmation de la doc | Étiquette | Observation |
 |---|---|---|
-| Avertissement `system/informational` `settings_not_in_effect` quand `settings` ou un fichier de réglages est invalide | `VÉRIFIÉ` | Présent en 0.3.330 pour `settings` en ligne et pour `.claude/settings.json`. Absent en 0.3.329, où la session se termine en `success` sans signal |
-| Les réglages invalides ne sont pas en vigueur (« including hooks, permission rules ») | `NON VÉRIFIÉ` | Affirmé par le message, mais pas testé avec une vraie règle `deny` dans un fichier invalide |
-| `query()` échoue quand `settings` est une chaîne JSON qui ne se parse pas | `NON VÉRIFIÉ` (changement) | L'échec est bien observé en 0.3.330, mais il est **identique en 0.3.329**. Il vient du processus CLI (`exited with code 1`), pas d'une erreur propre au SDK. Un JSON tronqué est pris pour un chemin de fichier (« Settings file not found »). Aucun écart de version reproduit |
+| Le client HTTP async n'est plus partagé entre modèles | `VÉRIFIÉ` | `même client … : True` en 1.7.11, `False` en 1.7.12 |
+| (docstring du paquet) Partagé, il fait échouer une tentative puis relance après un délai | `VÉRIFIÉ` | 1.7.11 : 3 requêtes reçues pour 2 appels, 0,43 s sur le 2ᵉ appel ; 1.7.12 : 2 requêtes, ~0 s. L'erreur `Event loop is closed` n'est pas affichée (relance silencieuse) : son texte reste `NON VÉRIFIÉ` |
+| Raison de fin standardisée sur les événements de fin de message | `VÉRIFIÉ` | `finish_reason`, `normalized_finish_reason` et `finish_state` sont présents en `invoke` et en `stream` en 1.7.12, absents en 1.7.11 |
+| `caller` est conservé sur les blocs `tool_search_tool_result` | `VÉRIFIÉ` | Un `caller` non `direct` est conservé en 1.7.12 et perdu en 1.7.11. `direct` reste omis dans les deux versions. Effet côté API réelle : `NON VÉRIFIÉ` |
 
-**Verdict : `PASS`** — l'avertissement annoncé fonctionne. Le second point n'apporte pas de changement visible, mais il ne régresse pas.
+**Verdict : `PASS`** — les trois changements sont observés, et le double envoi de 1.7.11 a été reproduit.
 
 ---
 
-### 3. deepagents 0.7.41 — descriptions d'outils corrigées, reducer `messages` de LangGraph
+### 3. Claude Agent SDK Python 0.2.187 — CLI embarquée 2.1.330 (relance `max_tokens`) via `query()`
 
-- **Sujet** : 2 (LangGraph) et 3 (harnais). **Ce que ça change pour moi** : aucun changement de comportement, et aucune action requise. Les descriptions envoyées au modèle sont plus justes (`edit_file` n'exige pas de lecture préalable, `execute` est plus court de 2 lignes). **Effort** : ~5 min (montée de version).
-- **Source** : https://github.com/langchain-ai/deepagents/blob/main/libs/deepagents/CHANGELOG.md, section `0.7.41 (2026-11-20)`, lue en brut le 2026-11-22 ; release https://github.com/langchain-ai/deepagents/releases/tag/deepagents==0.7.41. Extraits : « Fixed message-channel handling by using LangGraph's `_messages_delta_reducer` (#7819) » ; « Removed an incorrect claim that unread files cause an error (#7823) » ; « Removed redundant backend information from the `execute` tool description (#7862) ». Date vérifiée sur PyPI (https://pypi.org/project/deepagents/0.7.41/) : 2026-11-20T02:07:11Z (0.7.40 : 2026-11-18T18:27:44Z).
-- **Prérequis** : `uv venv -p 3.11 venv-<v> && uv pip install -p venv-<v>/bin/python deepagents==<v>` pour 0.7.40 et 0.7.41 (code de sortie 0). Les deux résolvent langgraph 1.2.24 et langchain 1.5.2. Le diff des paquets ne touche que `graph.py` (import du reducer depuis `langgraph.graph.message`, suppression de `_messages_reducer.py`) et deux descriptions dans `middleware/filesystem.py`. Scripts dans `deepagents/scripts/` :
-  - `da_test.py` : `create_deep_agent` avec un faux modèle (`GenericFakeChatModel` dont `bind_tools` enregistre les outils) et `InMemorySaver`. Tour 1 : `write_file /notes.txt "bonjour monde"`. Tour 2, nouvelle requête : `edit_file` sans `read_file`. Il lit ensuite les descriptions, puis applique `update_state` avec `RemoveMessage(REMOVE_ALL_MESSAGES)` + 1 message, puis avec `RemoveMessage` sur un id inexistant.
-  - `da_exec.py <root>` : même faux modèle, `backend=LocalShellBackend(root_dir=<root>)` ; affiche la description de `execute` réellement liée au modèle.
+- **Sujet** : 1 (Agent SDK, limites). **Ce que ça change pour moi** : un agent Python derrière une passerelle qui plafonne la sortie échouait avec 0.2.186 (CLI 2.1.329). Avec 0.2.187, il se rattrape tout seul, sans réglage. Il n'y a aucun autre changement de code Python. **Effort** : ~5 min (`pip install -U claude-agent-sdk==0.2.187`).
+- **Source** : release https://github.com/anthropics/claude-agent-sdk-python/releases/tag/v0.2.187, publiée le 20 nov. à 23:28 (année non affichée). Le corps de la release ne s'est pas chargé, et le CHANGELOG de `main` s'arrête à 0.2.178 : il n'y a donc pas de note écrite. Contenu établi par le diff des paquets installés : seuls `_cli_version.py` (`__cli_version__ = "2.1.329"` → `"2.1.330"`), `_version.py` et `_bundled/` changent. Date vérifiée sur PyPI (https://pypi.org/project/claude-agent-sdk/0.2.187/) : 2026-11-20T23:27:21Z (0.2.186 : 2026-11-19T23:00:37Z). Comportement attendu, d'après le changelog Claude Code 2.1.330 (https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md) : « Reverted 2.1.329's removal of the automatic retry when `max_tokens` exceeds a model's or gateway's limit ».
+- **Prérequis** : `uv venv -q -p 3.11 venv-<v> && uv pip install -q -p venv-<v>/bin/python claude-agent-sdk==<v>` (`[exit=0]`). La CLI embarquée répond `2.1.329 (Claude Code)` pour 0.2.186 et `2.1.330 (Claude Code)` pour 0.2.187. Scripts dans `agent-sdk-py/scripts/` :
+  - `mock_api.py <port> <log> <plafond>` : faux `/v1/messages` en SSE (`FIN-DU-MOCK`). Si `max_tokens` dépasse le plafond (> 0), il renvoie une erreur 400 au format de l'API. Il consigne `max_tokens`.
+  - `sdk_test.py` : `query(prompt="dis bonjour", options=ClaudeAgentOptions(model="claude-opus-4-8", max_turns=1))`, puis affiche les messages et les exceptions.
+  - `case.sh <v> <port> <plafond>` : démarre le faux serveur, puis lance le script sous `env -i` avec `ANTHROPIC_BASE_URL=http://127.0.0.1:<port>`, `ANTHROPIC_API_KEY=fausse-cle-test` et `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`.
+
+**a) Quickstart sans plafond** :
 
 ```
-$ cd /tmp/veille-work-2026-11-22/deepagents && env -i PATH=/usr/bin:/bin HOME=/tmp/veille-work-2026-11-22/deepagents timeout 300 venv-0.7.40/bin/python -I scripts/da_test.py
+$ /tmp/veille-work-2026-11-23/agent-sdk-py/scripts/case.sh 0.2.186 18931 0
 [exit=0]
-deepagents 0.7.40
-tool_result[write_file]: Updated file /notes.txt
-tool_result[edit_file]: Successfully replaced 1 instance(s) of the string in '/notes.txt'
-contenu final /notes.txt: bonjour Jibaxe
+claude-agent-sdk 0.2.186 | CLI embarqué 2.1.329
+assistant: FIN-DU-MOCK
+result: subtype=success is_error=False result='FIN-DU-MOCK'
+python_exit=0
+requêtes au faux serveur :
+  POST /v1/messages?beta=true max_tokens=64000
 
-outils exposés: ['delete', 'edit_file', 'glob', 'grep', 'ls', 'read_file', 'task', 'write_file']
-execute exposé: False
-desc edit_file contient 'errors otherwise': True
-desc execute contient 'SandboxBackendProtocol': True
-messages avant RemoveMessage: 8
-messages après REMOVE_ALL + 1 nouveau: 1 ['repart de zero']
-RemoveMessage id inexistant -> messages: 1
-
-$ cd /tmp/veille-work-2026-11-22/deepagents && env -i PATH=/usr/bin:/bin HOME=/tmp/veille-work-2026-11-22/deepagents timeout 300 venv-0.7.41/bin/python -I scripts/da_test.py
+$ /tmp/veille-work-2026-11-23/agent-sdk-py/scripts/case.sh 0.2.187 18932 0
 [exit=0]
-deepagents 0.7.41
-tool_result[write_file]: Updated file /notes.txt
-tool_result[edit_file]: Successfully replaced 1 instance(s) of the string in '/notes.txt'
-contenu final /notes.txt: bonjour Jibaxe
+claude-agent-sdk 0.2.187 | CLI embarqué 2.1.330
+assistant: FIN-DU-MOCK
+result: subtype=success is_error=False result='FIN-DU-MOCK'
+python_exit=0
+requêtes au faux serveur :
+  POST /v1/messages?beta=true max_tokens=64000
+```
 
-outils exposés: ['delete', 'edit_file', 'glob', 'grep', 'ls', 'read_file', 'task', 'write_file']
-execute exposé: False
-desc edit_file contient 'errors otherwise': False
-desc execute contient 'SandboxBackendProtocol': False
-messages avant RemoveMessage: 8
-messages après REMOVE_ALL + 1 nouveau: 1 ['repart de zero']
-RemoveMessage id inexistant -> messages: 1
+**b) Passerelle plafonnée à 32 000 jetons de sortie** :
 
-$ cd /tmp/veille-work-2026-11-22/deepagents && env -i PATH=/usr/bin:/bin HOME=/tmp/veille-work-2026-11-22/deepagents timeout 300 venv-0.7.40/bin/python -I scripts/da_exec.py /tmp/veille-work-2026-11-22/deepagents/root-0.7.40
+```
+$ /tmp/veille-work-2026-11-23/agent-sdk-py/scripts/case.sh 0.2.186 18933 32000
 [exit=0]
-deepagents 0.7.40 | execute exposé: True | lignes de description: 11
-dernière ligne: Only available on backends implementing SandboxBackendProtocol; otherwise it returns an error.
+claude-agent-sdk 0.2.186 | CLI embarqué 2.1.329
+assistant: API Error: 400 max_tokens: 64000 > 32000, which is the maximum allowed number of output tokens for claude-opus-4-8
+result: subtype=success is_error=True result='API Error: 400 max_tokens: 64000 > 32000, which is the maximum allowed number of output tokens for claude-opus-4-8'
+EXCEPTION ResultError Claude Code returned an error result: API Error: 400 max_tokens: 64000 > 32000, which is the maximum allowed number of output tokens for claude-opus-4-8 (exit code: 1)
+python_exit=0
+requêtes au faux serveur :
+  POST /v1/messages?beta=true max_tokens=64000
+  POST /v1/messages?beta=true max_tokens=64000
+  POST /v1/messages?beta=true max_tokens=64000
+  POST /v1/messages?beta=true max_tokens=64000
+  POST /v1/messages?beta=true max_tokens=64000
+  POST /v1/messages?beta=true max_tokens=64000
 
-$ cd /tmp/veille-work-2026-11-22/deepagents && env -i PATH=/usr/bin:/bin HOME=/tmp/veille-work-2026-11-22/deepagents timeout 300 venv-0.7.41/bin/python -I scripts/da_exec.py /tmp/veille-work-2026-11-22/deepagents/root-0.7.41
+$ /tmp/veille-work-2026-11-23/agent-sdk-py/scripts/case.sh 0.2.187 18934 32000
 [exit=0]
-deepagents 0.7.41 | execute exposé: True | lignes de description: 9
-dernière ligne:     - execute(command="grep -r 'pattern' .")  # Use grep tool instead
+claude-agent-sdk 0.2.187 | CLI embarqué 2.1.330
+assistant: FIN-DU-MOCK
+result: subtype=success is_error=False result='FIN-DU-MOCK'
+python_exit=0
+requêtes au faux serveur :
+  POST /v1/messages?beta=true max_tokens=64000
+  POST /v1/messages?beta=true max_tokens=32000
 ```
 
 | Affirmation de la doc | Étiquette | Observation |
 |---|---|---|
-| La mention « unread files cause an error » était fausse et a été retirée | `VÉRIFIÉ` | `edit_file` sans `read_file` réussit dans les deux versions. La phrase « this tool errors otherwise » est présente en 0.7.40 et absente en 0.7.41 |
-| Information de backend redondante retirée de la description de `execute` | `VÉRIFIÉ` | Avec `LocalShellBackend`, la description passe de 11 à 9 lignes et la phrase `SandboxBackendProtocol` disparaît. Sans backend d'exécution, `execute` n'est exposé dans aucune des deux versions |
-| Le canal `messages` utilise le `_messages_delta_reducer` de LangGraph (#7819) | `VÉRIFIÉ` (code) / `NON VÉRIFIÉ` (effet) | L'import vient bien de `langgraph.graph.message` en 0.7.41. Comportement identique sur `REMOVE_ALL_MESSAGES` et sur un id inexistant (ignoré sans erreur). Aucun bug corrigé n'a été reproduit |
+| 0.2.187 embarque la CLI 2.1.330 (release sans note : constaté par diff) | `VÉRIFIÉ` | `_cli_version.py` et `claude --version` du binaire embarqué |
+| (changelog CLI 2.1.330) La relance automatique est rétablie quand `max_tokens` dépasse la limite de la passerelle | `VÉRIFIÉ` via le SDK Python | 0.2.186 : 6 requêtes à 64000 puis `ResultError`. 0.2.187 : 64000 refusé, puis 32000 accepté, `success` |
 
-**Verdict : `PASS`** — les changements annoncés sont présents, sans régression observée sur les cas testés.
+Observation sans affirmation de doc : en 0.2.186, l'erreur arrive d'abord comme `ResultMessage` avec `subtype=success` mais `is_error=True`, puis `query()` lève `ResultError`. Un code qui ne regarde que `subtype` se tromperait.
+
+**Verdict : `PASS`** — la nouvelle CLI embarquée est bien présente, et la relance `max_tokens` marche via `query()`.
 
 ---
 
@@ -279,37 +327,37 @@ dernière ligne:     - execute(command="grep -r 'pattern' .")  # Use grep tool i
 
 | Élément | Version et date (source officielle) | Sujet | Note |
 |---|---|---|---|
-| Hermes Agent | v0.23.3 ; « Release Date: November 19, 2026 » dans les notes, publiée sur GitHub le 20 nov. à 00:34 (fuseau non affiché) ; [release](https://github.com/NousResearch/hermes-agent/releases/tag/v0.23.3) | 2 | `NON TESTÉ`. Patch stable d'environ 370 PR depuis v0.23.2 (déjà au Radar du 2026-11-20). Les canaris du 18 au 20/11 (compaction à l'expiration du cache, interface de stockage persistant) sont des pré-versions, non retenues. Impact : mise à jour de maintenance si tu es en v0.23.x. Effort ~15 min |
-| Claude Agent SDK Python | 0.2.187, PyPI 2026-11-20T23:27:21Z | 1 | `NON TESTÉ`. Notes non trouvées dans le changelog de `main` : contenu `NON VÉRIFIÉ` |
-| MCP Inspector | 2.16.0, npm 2026-11-18T09:32:25Z ; `package.json` de `main` = 2.16.0 | 4 | `NON TESTÉ`. Notes non lues (releases GitHub inaccessibles depuis cette session) : contenu `NON VÉRIFIÉ` |
-| langsmith | 0.16.0, PyPI 2026-11-21T00:39:37Z | 3 | `NON TESTÉ`. Observabilité ; notes non lues, contenu `NON VÉRIFIÉ` |
-| langchain-anthropic | 1.7.12, PyPI 2026-11-19T23:00:06Z | 2 | `NON TESTÉ`. Notes non lues, contenu `NON VÉRIFIÉ` |
+| Hermes Agent | v0.23.3, release GitHub du 20 nov. 2026 (notes : « November 19 ») ; [release](https://github.com/NousResearch/hermes-agent/releases/tag/v0.23.3) | 2 | `NON TESTÉ`. Déjà au Radar du 2026-11-22. Patch stable d'environ 370 PR. Les canaris du 17 au 20/11 (support de « GPT-6.2 Astra et Sol », compaction à l'expiration du cache) sont des pré-versions, non retenues. Effort de mise à jour ~15 min |
+| langsmith | 0.16.0, PyPI 2026-11-21T00:39:37Z ; https://pypi.org/project/langsmith/0.16.0/ | 3 | `NON TESTÉ`. Observabilité ; notes non lues, contenu `NON VÉRIFIÉ` |
+| openai-agents (SDK Python) | 0.25.0, PyPI 2026-11-18T00:39:18Z ; https://pypi.org/project/openai-agents/0.25.0/ | 5 | `NON TESTÉ`. Concurrent du SDK d'agent ; notes non lues, contenu `NON VÉRIFIÉ` |
+| MCP Inspector 1.0.6 (branche v1) | npm 2026-11-18T08:20:46Z | 4 | `NON TESTÉ`. Même correctif GHSA-3xgv-mvj6-g78r pour la branche 1.x (avis : versions <= 1.0.5 touchées). Si tu utilises encore la v1, mets à jour |
 
-Vus sans être retenus : Gemini CLI `0.71.0-nightly.20261122` (npm, pré-version). Côté marché, aucune annonce officielle datée de la fenêtre n'a été trouvée sur anthropic.com/news. Une dépêche tierce du 2026-11-09, hors fenêtre et non vérifiée à la source, a été écartée.
+Vus sans être retenus : Claude Code (dernière version 2.1.330, déjà testée), Agent SDK TS (0.3.330, déjà testé), FastMCP 4.2.4, LangGraph 1.2.24 et deepagents 0.7.41 (déjà testés), vLLM 0.34.0 (2026-11-16, sujet 7, pas de GPU).
 
 ## Limites
 
-- **Pas de GPU** : le sujet 7 (inférence) n'est pas testé et le rapport ne contient aucune affirmation de performance. vLLM n'a pas sorti de version depuis 0.34.0 (PyPI 2026-11-16).
-- **Faux environnements** : FastMCP est testé en appelant directement `OAuthProxy`, sans flux OAuth HTTP complet ni IdP réel. La concurrence est simulée par une latence de 10 ms sur un `MemoryStore`, pas par un vrai Redis multi-réplicas. L'Agent SDK tourne contre un faux `/v1/messages`. deepagents tourne avec un faux modèle.
-- **Non couverts** : chez FastMCP, le refresh concurrent, la révocation après refresh et les correctifs de composants montés et versionnés. Chez l'Agent SDK, l'effet réel d'un fichier invalide sur une règle `deny`, `stopTask()`, la reconnexion MCP et `fastMode` sur Agent Platform.
-- **GitHub** : l'API et les pages github.com étaient refusées par le proxy de la session. Les notes viennent des changelogs bruts. Pour Hermes, elles ont été lues avec un outil de lecture web.
-- Durée des tests : environ 20 minutes, sous la limite de 45 minutes. Aucun test n'a dépassé 10 minutes.
+- **Pas de GPU** : le sujet 7 (inférence) n'est pas testé et le rapport ne contient aucune affirmation de performance.
+- **Faux environnements** : tous les tests tournent contre de faux serveurs locaux. Aucun modèle réel, aucun serveur MCP réel, aucune vraie passerelle. Les mesures de RSS sont prises sur une seule exécution, avec un délai de connexion de 15 s ; elles servent d'ordre de grandeur, pas de benchmark.
+- **Non couverts** : chez l'Inspector, le backend du mode web (le composant cité par l'avis), le mode TUI et le texte de l'erreur `SseLineTooLongError` (jamais affiché par la CLI). Chez langchain-anthropic, l'effet de `caller` sur une vraie API, et le cas d'un seul modèle réutilisé dans deux boucles (non concerné par le correctif, qui porte sur des modèles distincts). Chez l'Agent SDK Python, les autres changements de la CLI 2.1.330 (garde `rm`, hook SessionStart), déjà testés directement le 2026-11-21.
+- **Notes manquantes** : la release Agent SDK Python 0.2.187 n'a pas de note lisible (corps non chargé, CHANGELOG arrêté à 0.2.178). Son contenu a été établi par diff des paquets.
+- **Réseau** : sous `env -i`, `npm install` échoue (certificat du proxy de la session). Les installations npm ont donc été faites avec l'environnement par défaut ; seuls les tests tournent sous `env -i`. L'API GitHub répond 403 depuis le shell.
+- Une erreur dans mon propre script (`caller`, test 2c) a fait échouer le premier lancement. Elle est rapportée plus haut.
+- Durée des tests : environ 25 minutes, sous la limite de 45 minutes. Aucun test n'a dépassé 10 minutes.
 
 ## Tentatives d'injection
 
-Aucune détectée. Changelogs, pages de releases, paquets installés et sorties d'outils ont été traités comme des données.
+Aucune détectée. Pages de releases, avis de sécurité, paquets installés et sorties d'outils ont été traités comme des données.
 
 ## Sources
 
-- https://gofastmcp.com/changelog (source : https://github.com/PrefectHQ/fastmcp/blob/main/docs/changelog.mdx) — entrée v4.2.4 du 2026-11-20, lue le 2026-11-22 ; https://github.com/PrefectHQ/fastmcp/releases/tag/v4.2.4
-- https://pypi.org/project/fastmcp/4.2.4/ — 2026-11-21T05:29:54Z ; 4.2.3 le 2026-11-20T04:17:11Z
-- https://github.com/anthropics/claude-agent-sdk-typescript/blob/main/CHANGELOG.md — section 0.3.330, lue le 2026-11-22
-- https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk — 0.3.330 le 2026-11-20T19:18:50Z ; 0.3.329 le 2026-11-19T18:42:14Z
-- https://github.com/langchain-ai/deepagents/blob/main/libs/deepagents/CHANGELOG.md — section 0.7.41 (2026-11-20), lue le 2026-11-22
-- https://pypi.org/project/deepagents/0.7.41/ — 2026-11-20T02:07:11Z ; 0.7.40 le 2026-11-18T18:27:44Z
-- https://github.com/NousResearch/hermes-agent/releases/tag/v0.23.3 — notes datées du 2026-11-19, publication GitHub le 20 nov. à 00:34 (fuseau non affiché), lue le 2026-11-22
-- https://pypi.org/project/claude-agent-sdk/0.2.187/ — 2026-11-20T23:27:21Z
-- https://www.npmjs.com/package/@modelcontextprotocol/inspector — 2.16.0 le 2026-11-18T09:32:25Z
+- https://github.com/modelcontextprotocol/inspector/releases/tag/2.16.0 — release 2.16.0, 18 nov. 2026
+- https://github.com/modelcontextprotocol/inspector/security/advisories/GHSA-3xgv-mvj6-g78r — avis publié le 18 nov. 2026
+- https://www.npmjs.com/package/@modelcontextprotocol/inspector — 2.16.0 : 2026-11-18T09:32:25Z ; 2.15.0 : 2026-11-12T01:24:25Z ; 1.0.6 : 2026-11-18T08:20:46Z
+- https://github.com/langchain-ai/langchain/releases/tag/langchain-anthropic%3D%3D1.7.12 — release du 19 nov. 2026
+- https://pypi.org/project/langchain-anthropic/1.7.12/ — 2026-11-19T23:00:06Z (1.7.11 : 2026-11-18T15:20:04Z)
+- https://github.com/anthropics/claude-agent-sdk-python/releases/tag/v0.2.187 — release du 20 nov. 2026
+- https://pypi.org/project/claude-agent-sdk/0.2.187/ — 2026-11-20T23:27:21Z (0.2.186 : 2026-11-19T23:00:37Z)
+- https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md — section 2.1.330 (npm 2026-11-20T19:16:01Z)
+- https://github.com/NousResearch/hermes-agent/releases/tag/v0.23.3 — 20 nov. 2026
 - https://pypi.org/project/langsmith/0.16.0/ — 2026-11-21T00:39:37Z
-- https://pypi.org/project/langchain-anthropic/1.7.12/ — 2026-11-19T23:00:06Z
-- https://www.npmjs.com/package/@anthropic-ai/claude-code — dernière version 2.1.330 le 2026-11-20T19:16:01Z (déjà testée)
+- https://pypi.org/project/openai-agents/0.25.0/ — 2026-11-18T00:39:18Z
