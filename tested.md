@@ -30,3 +30,6 @@ Une ligne par test : `date | élément | version | verdict | rapport`. L'agent a
 2026-11-23 | mcp-inspector (plafond SSE GHSA-3xgv-mvj6-g78r : ligne sans fin, événement géant, transport sse ; RSS 2.15.0 351→869 Mio vs 2.16.0 ≤189 Mio ; A/B 2.15.0) | 2.16.0 | PASS | reports/2026-11-23.md
 2026-11-23 | langchain-anthropic (client async non partagé : double envoi reproduit en 1.7.11, finish_reason normalisé invoke/stream, caller conservé ; A/B 1.7.11) | 1.7.12 | PASS | reports/2026-11-23.md
 2026-11-23 | claude-agent-sdk Python (CLI embarquée 2.1.330, relance max_tokens via query() derrière passerelle plafonnée ; A/B 0.2.186) | 0.2.187 | PASS | reports/2026-11-23.md
+2026-11-24 | claude-code (tool_use sans clé name : crash 2.1.330 → session continue ; name "" sans écart ; section API connectivity de doctor, code de sortie 0 même API injoignable ; A/B 2.1.330) | 2.1.331 | PASS | reports/2026-11-24.md
+2026-11-24 | fastmcp (en-têtes mcp-* plus transmis aux backends OpenAPI, forward_client_headers False/liste ; URI de redirection : racine exacte, query, fragment ; A/B 4.2.4) | 4.2.5 | PASS | reports/2026-11-24.md
+2026-11-24 | anthropic SDK Python (DeprecationWarning pour claude-opus-4-5, EOL 22/01/2027 ; plus d'avertissement pour modèles retirés, mythos-preview encore averti ; A/B 2.12.0) | 2.13.0 | PASS | reports/2026-11-24.md
