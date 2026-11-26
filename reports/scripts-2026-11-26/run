@@ -1,0 +1,5 @@
+#!/bin/bash
+# usage: run <journal> "<commande>" ; consigne commande, code de sortie, sortie tronquée à 40 lignes
+log="$1"; shift; cmd="$*"
+out=$(bash -c "$cmd" 2>&1); rc=$?
+{ echo "\$ $cmd"; echo "[exit=$rc]"; echo "$out" | head -40; [ $(echo "$out" | wc -l) -gt 40 ] && echo "… (tronqué, $(echo "$out" | wc -l) lignes)"; echo; } | tee -a "$log"
