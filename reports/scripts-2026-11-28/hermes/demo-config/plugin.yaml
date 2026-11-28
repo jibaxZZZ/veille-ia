@@ -1,0 +1,8 @@
+name: demo-config
+version: 0.1.0
+description: "Plugin de test local : réglages déclarés, aucun code actif"
+config_schema:
+  api_url: {type: str, default: "https://api.example.com", label: "API URL", description: "Service endpoint"}
+  retries: {type: int, default: 3}
+  mode: {type: str, choices: [fast, careful], default: fast}
+  api_key: {type: secret, env: DEMO_CONFIG_API_KEY, description: "Personal access token", required: true}
